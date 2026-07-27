@@ -119,6 +119,8 @@ function renderResumen(registros) {
 
   const totalBs = sumBy(pagados.filter(r => r.pago.moneda === 'Bs'), r => r.pago.monto);
   const totalUsd = sumBy(pagados.filter(r => r.pago.moneda === 'USD'), r => r.pago.monto);
+  const pendienteBs = sumBy(pendientes.filter(r => r.pago.moneda === 'Bs'), r => r.pago.monto);
+  const pendienteUsd = sumBy(pendientes.filter(r => r.pago.moneda === 'USD'), r => r.pago.monto);
   const propinaBs = sumBy(registros.filter(r => r.propina.moneda === 'Bs'), r => r.propina.monto);
   const propinaUsd = sumBy(registros.filter(r => r.propina.moneda === 'USD'), r => r.propina.monto);
 
@@ -127,6 +129,8 @@ function renderResumen(registros) {
     { label: 'Total cobrado (Bs)', value: awFormatMoney(totalBs, 'Bs'), sub: 'Solo lavados pagados' },
     { label: 'Total cobrado ($)', value: awFormatMoney(totalUsd, 'USD'), sub: 'Solo lavados pagados' },
     { label: 'Pendientes por cobrar', value: pendientes.length, sub: pendientes.length ? 'Requieren seguimiento' : 'Al día 🎉' },
+    { label: 'Monto pendiente (Bs)', value: awFormatMoney(pendienteBs, 'Bs'), sub: 'Por cobrar' },
+    { label: 'Monto pendiente ($)', value: awFormatMoney(pendienteUsd, 'USD'), sub: 'Por cobrar' },
     { label: 'Propinas (Bs)', value: awFormatMoney(propinaBs, 'Bs'), sub: '' },
     { label: 'Propinas ($)', value: awFormatMoney(propinaUsd, 'USD'), sub: '' },
     { label: 'Bebidas consumidas', value: sumBy(registros, r => r.bebidas.cerveza + r.bebidas.refresco + r.bebidas.energizante), sub: 'Cerveza + Refresco + Energizante' },
@@ -140,6 +144,21 @@ function renderResumen(registros) {
       <div class="kpi-sub">${escapeHtml(k.sub || '')}</div>
     </div>
   `).join('');
+
+  // Clientes con pago pendiente
+  const tablaPendientes = document.getElementById('tablaPendientes');
+  if (tablaPendientes) {
+    tablaPendientes.innerHTML = pendientes.length ? pendientes.map(r => `
+      <tr>
+        <td>${escapeHtml(r.cliente.nombre)}</td>
+        <td>${escapeHtml(r.cliente.telefono)}</td>
+        <td>${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</td>
+        <td>${escapeHtml(r.servicio.nombre)}</td>
+        <td>${awFormatMoney(r.pago.monto, r.pago.moneda)}</td>
+        <td>${awFormatDateTime(r.fecha)}</td>
+      </tr>
+    `).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:20px;">No hay clientes con pago pendiente 🎉</td></tr>`;
+  }
 
   // Comisiones por lavador
   const porLavador = {};

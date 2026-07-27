@@ -128,7 +128,7 @@ function awIsToday(iso) {
 }
 
 function awPaymentLabel(metodo) {
-  return { punto: 'Punto de venta', movil: 'Pago móvil', pendiente: 'Pendiente' }[metodo] || metodo;
+  return { efectivo: 'Efectivo', punto: 'Punto de venta', movil: 'Pago móvil', pendiente: 'Pendiente' }[metodo] || metodo;
 }
 
 document.addEventListener('DOMContentLoaded', awSeedIfEmpty);

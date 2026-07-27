@@ -128,7 +128,7 @@ function updateReferenciaVisibility() {
   const metodo = document.querySelector('input[name="metodoPago"]:checked').value;
   const wrap = document.getElementById('referenciaWrap');
   const refInput = document.getElementById('referenciaPago');
-  if (metodo === 'pendiente') {
+  if (metodo === 'pendiente' || metodo === 'efectivo') {
     wrap.style.opacity = '0.5';
     refInput.removeAttribute('required');
   } else {
@@ -248,6 +248,7 @@ function renderTicket(r) {
         <div class="field">
           <label>Método</label>
           <select id="pay-metodo-${r.id}">
+            <option value="efectivo">Efectivo</option>
             <option value="punto">Punto de venta</option>
             <option value="movil">Pago móvil</option>
           </select>
