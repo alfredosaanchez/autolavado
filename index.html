@@ -626,6 +626,54 @@ footer.small-print{
   padding: 30px 20px 10px;
 }
 
+/* Resumen de cobro (total en vivo) */
+.resumen-cobro{
+  background: var(--bg-soft);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+}
+.resumen-linea{
+  display:flex;
+  justify-content:space-between;
+  gap: 12px;
+  font-size: .85rem;
+  padding: 4px 0;
+  color: var(--ink-soft);
+}
+.resumen-linea span:last-child{ color: var(--ink); font-weight:600; text-align:right; }
+.resumen-divider{ border-top: 1px dashed var(--border); margin: 8px 0; }
+.resumen-total{
+  display:flex;
+  gap: 16px;
+  flex-wrap:wrap;
+}
+.resumen-total > div{
+  flex:1;
+  min-width: 140px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+}
+.resumen-total-label{
+  display:block;
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--aqua);
+  font-weight:700;
+}
+.resumen-total-val{
+  display:block;
+  font-family: var(--font-mono);
+  font-weight:700;
+  font-size: 1.25rem;
+  color: var(--primary-dark);
+  margin-top: 3px;
+}
+
 </style>
 </head>
 <body>
@@ -714,6 +762,32 @@ footer.small-print{
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-eyebrow">Resumen de cobro</div>
+          <div class="resumen-cobro" id="resumenCobro">
+            <div class="resumen-linea">
+              <span>Servicio</span>
+              <span id="resumenServicioTxt">—</span>
+            </div>
+            <div class="resumen-linea" id="resumenBebidasLinea" style="display:none;">
+              <span>Bebidas</span>
+              <span id="resumenBebidasTxt">—</span>
+            </div>
+            <div class="resumen-divider"></div>
+            <div class="resumen-total">
+              <div>
+                <span class="resumen-total-label">Total Bs</span>
+                <span class="resumen-total-val" id="resumenTotalBs">Bs 0,00</span>
+              </div>
+              <div>
+                <span class="resumen-total-label">Total $</span>
+                <span class="resumen-total-val" id="resumenTotalUsd">$ 0,00</span>
+              </div>
+            </div>
+          </div>
+          <div class="hint">Se calcula solo, según los precios configurados en el panel admin. Sirve igual para saber cuánto cobrar, pague el cliente de una vez o quede pendiente.</div>
         </div>
 
         <div class="form-section">

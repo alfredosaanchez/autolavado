@@ -43,23 +43,41 @@ function actualizarHintPrecio() {
   const id = document.getElementById('servicioSelect').value;
   const moneda = document.getElementById('monedaPago').value;
   const s = servicios.find(x => x.id === id);
-  const hint = document.getElementById('servicioPrecioHint');
 
-  const precioServicio = s ? (moneda === 'USD' ? s.precioUsd : s.precioBs) : 0;
-  const costoBebidas = awCalcularCostoBebidas(awDrinkCounts, moneda);
-  const total = (precioServicio || 0) + costoBebidas;
+  const precioServicioBs = s ? (s.precioBs || 0) : 0;
+  const precioServicioUsd = s ? (s.precioUsd || 0) : 0;
+  const bebidasBs = awCalcularCostoBebidas(awDrinkCounts, 'Bs');
+  const bebidasUsd = awCalcularCostoBebidas(awDrinkCounts, 'USD');
+  const totalBs = precioServicioBs + bebidasBs;
+  const totalUsd = precioServicioUsd + bebidasUsd;
 
-  if (!s) {
-    hint.textContent = '';
-  } else if (costoBebidas > 0) {
-    hint.textContent = `Servicio: ${awFormatMoney(precioServicio, moneda)} + Bebidas: ${awFormatMoney(costoBebidas, moneda)} = ${awFormatMoney(total, moneda)} — puedes ajustar el monto total abajo.`;
+  document.getElementById('resumenServicioTxt').textContent = s
+    ? `${s.nombre} — ${awFormatMoney(precioServicioBs, 'Bs')} / ${awFormatMoney(precioServicioUsd, 'USD')}`
+    : 'Selecciona un servicio';
+
+  const bebidasLinea = document.getElementById('resumenBebidasLinea');
+  const bebidasHayAlguna = Object.values(awDrinkCounts).some(v => v > 0);
+  if (bebidasHayAlguna) {
+    const detalle = Object.entries(awDrinkCounts)
+      .filter(([, v]) => v > 0)
+      .map(([k, v]) => `${v}× ${capitalize(k)}`)
+      .join(', ');
+    document.getElementById('resumenBebidasTxt').textContent = `${detalle} — ${awFormatMoney(bebidasBs, 'Bs')} / ${awFormatMoney(bebidasUsd, 'USD')}`;
+    bebidasLinea.style.display = 'flex';
   } else {
-    hint.textContent = `Precio referencial: ${awFormatMoney(precioServicio, moneda)} — puedes ajustar el monto total abajo.`;
+    bebidasLinea.style.display = 'none';
   }
+
+  document.getElementById('resumenTotalBs').textContent = awFormatMoney(totalBs, 'Bs');
+  document.getElementById('resumenTotalUsd').textContent = awFormatMoney(totalUsd, 'USD');
+
+  const hint = document.getElementById('servicioPrecioHint');
+  const totalMoneda = moneda === 'USD' ? totalUsd : totalBs;
+  hint.textContent = s ? `Se sugiere cobrar ${awFormatMoney(totalMoneda, moneda)} en ${moneda}.` : '';
 
   const montoInput = document.getElementById('montoTotal');
   if (!montoInput.dataset.touched) {
-    montoInput.value = total || '';
+    montoInput.value = totalMoneda || '';
   }
 }
 
