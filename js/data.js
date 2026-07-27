@@ -131,4 +131,18 @@ function awPaymentLabel(metodo) {
   return { efectivo: 'Efectivo', punto: 'Punto de venta', movil: 'Pago móvil', pendiente: 'Pendiente' }[metodo] || metodo;
 }
 
+/* ---------- WhatsApp ---------- */
+function awNormalizarTelefonoVE(telefono) {
+  let digitos = (telefono || '').replace(/\D/g, '');
+  if (digitos.startsWith('58')) return digitos;
+  if (digitos.startsWith('0')) return '58' + digitos.slice(1);
+  return '58' + digitos;
+}
+
+function awWhatsAppLink(telefono, nombre, carroModelo) {
+  const numero = awNormalizarTelefonoVE(telefono);
+  const mensaje = `Hola, buenas Sr(a) ${nombre}, un gusto saludarle desde el AUTOLAVADO, su vehículo ${carroModelo} ya está listo para que venga a retirarlo.`;
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
+}
+
 document.addEventListener('DOMContentLoaded', awSeedIfEmpty);

@@ -303,6 +303,8 @@ input::placeholder{ color: #9FB0B8; }
 .btn-ghost:hover{ border-color: var(--primary); }
 .btn-danger{ background: var(--danger-bg); color: var(--danger); }
 .btn-danger:hover{ background: #FADCD2; }
+.btn-whatsapp{ background: #25D366; color: #063615; }
+.btn-whatsapp:hover{ background: #1EBE5A; }
 .btn-sm{ padding: 7px 14px; font-size: .78rem; }
 .btn-block{ width:100%; }
 

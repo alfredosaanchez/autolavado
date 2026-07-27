@@ -280,7 +280,10 @@ function renderTicket(r) {
           <div class="ticket-client">${escapeHtml(r.cliente.nombre)}</div>
           <div class="ticket-sub">${escapeHtml(r.cliente.telefono)} · ${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</div>
         </div>
-        <span class="stamp ${r.estado.toLowerCase()}">${r.estado}</span>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+          <span class="stamp ${r.estado.toLowerCase()}">${r.estado}</span>
+          <a class="btn btn-whatsapp btn-sm" href="${awWhatsAppLink(r.cliente.telefono, r.cliente.nombre, r.carro.modelo)}" target="_blank" rel="noopener">💬 WhatsApp</a>
+        </div>
       </div>
       <div class="ticket-divider"></div>
       <div class="ticket-grid">
