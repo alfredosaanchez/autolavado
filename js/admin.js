@@ -72,7 +72,44 @@ function renderAll() {
   renderResumen(filtrados);
   renderTablaRegistros(filtrados);
   renderServicios();
+  renderBebidas();
   renderLavadores();
+}
+
+/* ---------- Bebidas (precios) ---------- */
+function renderBebidas() {
+  const precios = awGetBebidasPrecios();
+  const cont = document.getElementById('listaBebidas');
+  cont.innerHTML = Object.keys(AW_BEBIDA_LABELS).map(tipo => {
+    const p = precios[tipo] || { precioBs: 0, precioUsd: 0 };
+    return `
+      <div class="manage-item" data-bebida-id="${tipo}">
+        <div class="mi-fields">
+          <div class="field"><label>Bebida</label><div style="padding:10px 0;font-weight:700;">${AW_BEBIDA_LABELS[tipo]}</div></div>
+          <div class="field"><label>Precio Bs</label><input type="number" step="0.01" min="0" value="${p.precioBs}" data-field="precioBs"></div>
+          <div class="field"><label>Precio $</label><input type="number" step="0.01" min="0" value="${p.precioUsd}" data-field="precioUsd"></div>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-primary btn-sm" data-save-bebida="${tipo}">Guardar</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  cont.querySelectorAll('[data-save-bebida]').forEach(btn => {
+    btn.addEventListener('click', () => saveBebida(btn.dataset.saveBebida));
+  });
+}
+
+function saveBebida(tipo) {
+  const item = document.querySelector(`[data-bebida-id="${tipo}"]`);
+  const precios = awGetBebidasPrecios();
+  precios[tipo] = {
+    precioBs: parseFloat(item.querySelector('[data-field="precioBs"]').value) || 0,
+    precioUsd: parseFloat(item.querySelector('[data-field="precioUsd"]').value) || 0
+  };
+  awSaveBebidasPrecios(precios);
+  showToast('Precio de bebida actualizado');
 }
 
 /* ---------- Resumen (KPIs) ---------- */

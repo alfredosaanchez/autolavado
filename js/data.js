@@ -7,8 +7,11 @@
 const AW_KEYS = {
   SERVICIOS: 'aw_servicios',
   LAVADORES: 'aw_lavadores',
-  REGISTROS: 'aw_registros'
+  REGISTROS: 'aw_registros',
+  BEBIDAS: 'aw_bebidas'
 };
+
+const AW_BEBIDA_LABELS = { cerveza: 'Cerveza', refresco: 'Refresco', energizante: 'Energizante' };
 
 function awUid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -46,6 +49,26 @@ function awSeedIfEmpty() {
   if (!awRead(AW_KEYS.REGISTROS)) {
     awWrite(AW_KEYS.REGISTROS, []);
   }
+  if (!awRead(AW_KEYS.BEBIDAS)) {
+    awWrite(AW_KEYS.BEBIDAS, {
+      cerveza: { precioBs: 0, precioUsd: 0 },
+      refresco: { precioBs: 0, precioUsd: 0 },
+      energizante: { precioBs: 0, precioUsd: 0 }
+    });
+  }
+}
+
+/* ---------- Bebidas (precios) ---------- */
+function awGetBebidasPrecios() { return awRead(AW_KEYS.BEBIDAS) || {}; }
+function awSaveBebidasPrecios(obj) { awWrite(AW_KEYS.BEBIDAS, obj); }
+
+function awCalcularCostoBebidas(bebidasCounts, moneda) {
+  const precios = awGetBebidasPrecios();
+  const campo = moneda === 'USD' ? 'precioUsd' : 'precioBs';
+  return Object.entries(bebidasCounts || {}).reduce((sum, [tipo, qty]) => {
+    const precio = precios[tipo] ? (precios[tipo][campo] || 0) : 0;
+    return sum + (Number(qty) || 0) * precio;
+  }, 0);
 }
 
 /* ---------- Servicios ---------- */

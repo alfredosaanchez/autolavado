@@ -44,12 +44,22 @@ function actualizarHintPrecio() {
   const moneda = document.getElementById('monedaPago').value;
   const s = servicios.find(x => x.id === id);
   const hint = document.getElementById('servicioPrecioHint');
-  if (!s) { hint.textContent = ''; return; }
-  const precio = moneda === 'USD' ? s.precioUsd : s.precioBs;
-  hint.textContent = `Precio referencial: ${awFormatMoney(precio, moneda)} — puedes ajustar el monto total abajo.`;
+
+  const precioServicio = s ? (moneda === 'USD' ? s.precioUsd : s.precioBs) : 0;
+  const costoBebidas = awCalcularCostoBebidas(awDrinkCounts, moneda);
+  const total = (precioServicio || 0) + costoBebidas;
+
+  if (!s) {
+    hint.textContent = '';
+  } else if (costoBebidas > 0) {
+    hint.textContent = `Servicio: ${awFormatMoney(precioServicio, moneda)} + Bebidas: ${awFormatMoney(costoBebidas, moneda)} = ${awFormatMoney(total, moneda)} — puedes ajustar el monto total abajo.`;
+  } else {
+    hint.textContent = `Precio referencial: ${awFormatMoney(precioServicio, moneda)} — puedes ajustar el monto total abajo.`;
+  }
+
   const montoInput = document.getElementById('montoTotal');
   if (!montoInput.dataset.touched) {
-    montoInput.value = precio || '';
+    montoInput.value = total || '';
   }
 }
 
@@ -63,6 +73,7 @@ function bindDrinkSteppers() {
       val = op === '+' ? val + 1 : Math.max(0, val - 1);
       awDrinkCounts[drink] = val;
       document.getElementById(`qty-${drink}`).textContent = val;
+      actualizarHintPrecio();
     });
   });
   document.getElementById('montoTotal').addEventListener('input', (e) => {
