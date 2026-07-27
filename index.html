@@ -765,6 +765,27 @@ footer.small-print{
         </div>
 
         <div class="form-section">
+          <div class="section-eyebrow">Periquitos</div>
+          <div class="field-row thirds">
+            <div class="field">
+              <label for="periquitosDesc">Descripción</label>
+              <input type="text" id="periquitosDesc" placeholder="Ej: 2 periquitos">
+            </div>
+            <div class="field">
+              <label for="periquitosMonto">Monto</label>
+              <input type="number" id="periquitosMonto" min="0" step="0.01" placeholder="0.00">
+            </div>
+            <div class="field">
+              <label for="periquitosMoneda">Moneda</label>
+              <select id="periquitosMoneda">
+                <option value="Bs">Bolívares (Bs)</option>
+                <option value="USD">Dólares ($)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
           <div class="section-eyebrow">Resumen de cobro</div>
           <div class="resumen-cobro" id="resumenCobro">
             <div class="resumen-linea">
@@ -774,6 +795,10 @@ footer.small-print{
             <div class="resumen-linea" id="resumenBebidasLinea" style="display:none;">
               <span>Bebidas</span>
               <span id="resumenBebidasTxt">—</span>
+            </div>
+            <div class="resumen-linea" id="resumenPeriquitosLinea" style="display:none;">
+              <span>Periquitos</span>
+              <span id="resumenPeriquitosTxt">—</span>
             </div>
             <div class="resumen-divider"></div>
             <div class="resumen-total">

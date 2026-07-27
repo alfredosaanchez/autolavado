@@ -36,6 +36,9 @@ function poblarLavadores() {
 function bindServicioChange() {
   document.getElementById('servicioSelect').addEventListener('change', actualizarHintPrecio);
   document.getElementById('monedaPago').addEventListener('change', actualizarHintPrecio);
+  document.getElementById('periquitosMonto').addEventListener('input', actualizarHintPrecio);
+  document.getElementById('periquitosMoneda').addEventListener('change', actualizarHintPrecio);
+  document.getElementById('periquitosDesc').addEventListener('input', actualizarHintPrecio);
 }
 
 function actualizarHintPrecio() {
@@ -48,8 +51,14 @@ function actualizarHintPrecio() {
   const precioServicioUsd = s ? (s.precioUsd || 0) : 0;
   const bebidasBs = awCalcularCostoBebidas(awDrinkCounts, 'Bs');
   const bebidasUsd = awCalcularCostoBebidas(awDrinkCounts, 'USD');
-  const totalBs = precioServicioBs + bebidasBs;
-  const totalUsd = precioServicioUsd + bebidasUsd;
+
+  const periquitosMonto = parseFloat(document.getElementById('periquitosMonto').value) || 0;
+  const periquitosMoneda = document.getElementById('periquitosMoneda').value;
+  const periquitosBs = periquitosMoneda === 'Bs' ? periquitosMonto : 0;
+  const periquitosUsd = periquitosMoneda === 'USD' ? periquitosMonto : 0;
+
+  const totalBs = precioServicioBs + bebidasBs + periquitosBs;
+  const totalUsd = precioServicioUsd + bebidasUsd + periquitosUsd;
 
   document.getElementById('resumenServicioTxt').textContent = s
     ? `${s.nombre} — ${awFormatMoney(precioServicioBs, 'Bs')} / ${awFormatMoney(precioServicioUsd, 'USD')}`
@@ -66,6 +75,15 @@ function actualizarHintPrecio() {
     bebidasLinea.style.display = 'flex';
   } else {
     bebidasLinea.style.display = 'none';
+  }
+
+  const periquitosLinea = document.getElementById('resumenPeriquitosLinea');
+  if (periquitosMonto > 0) {
+    const desc = document.getElementById('periquitosDesc').value.trim();
+    document.getElementById('resumenPeriquitosTxt').textContent = `${desc ? desc + ' — ' : ''}${awFormatMoney(periquitosMonto, periquitosMoneda)}`;
+    periquitosLinea.style.display = 'flex';
+  } else {
+    periquitosLinea.style.display = 'none';
   }
 
   document.getElementById('resumenTotalBs').textContent = awFormatMoney(totalBs, 'Bs');
@@ -144,6 +162,11 @@ function onSubmitRegistro(e) {
     },
     servicio: { id: servicioId, nombre: servicio ? servicio.nombre : '—' },
     bebidas: { ...awDrinkCounts },
+    periquitos: {
+      descripcion: document.getElementById('periquitosDesc').value.trim(),
+      monto: parseFloat(document.getElementById('periquitosMonto').value) || 0,
+      moneda: document.getElementById('periquitosMoneda').value
+    },
     pago: {
       metodo: metodo,
       moneda: document.getElementById('monedaPago').value,
@@ -212,6 +235,10 @@ function renderTicket(r) {
     ? awFormatMoney(r.propina.monto, r.propina.moneda) + (r.propina.referencia ? ` (Ref: ${escapeHtml(r.propina.referencia)})` : '')
     : '—';
 
+  const periquitosTxt = r.periquitos && r.periquitos.monto > 0
+    ? `${r.periquitos.descripcion ? escapeHtml(r.periquitos.descripcion) + ' — ' : ''}${awFormatMoney(r.periquitos.monto, r.periquitos.moneda)}`
+    : '—';
+
   const pendienteBlock = r.estado === 'PENDIENTE' ? `
     <div class="ticket-actions">
       <button class="btn btn-accent btn-sm" data-toggle-pay="${r.id}">Marcar como pagado</button>
@@ -258,6 +285,7 @@ function renderTicket(r) {
       <div class="ticket-grid">
         <div class="lbl">Servicio</div><div class="val">${escapeHtml(r.servicio.nombre)}</div>
         <div class="lbl">Bebidas</div><div class="val">${bebidasTxt}</div>
+        <div class="lbl">Periquitos</div><div class="val">${periquitosTxt}</div>
         <div class="lbl">Método de pago</div><div class="val">${awPaymentLabel(r.pago.metodo)}</div>
         <div class="lbl">Referencia</div><div class="val">${r.pago.referencia ? escapeHtml(r.pago.referencia) : '—'}</div>
         <div class="lbl">Lavador</div><div class="val">${escapeHtml(r.lavador.nombre)} (${r.porcentajeLavador}%)</div>

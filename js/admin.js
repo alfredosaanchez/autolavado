@@ -176,12 +176,13 @@ function renderTablaRegistros(registros) {
   const tbody = document.getElementById('tablaRegistros');
 
   if (registros.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="15" style="text-align:center;color:var(--ink-soft);padding:24px;">No hay registros con estos filtros</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;color:var(--ink-soft);padding:24px;">No hay registros con estos filtros</td></tr>`;
     return;
   }
 
   tbody.innerHTML = registros.map(r => {
     const bebidasTxt = Object.entries(r.bebidas).filter(([, v]) => v > 0).map(([k, v]) => `${v}×${k[0].toUpperCase()}`).join(' ') || '—';
+    const periquitosTxt = r.periquitos && r.periquitos.monto > 0 ? awFormatMoney(r.periquitos.monto, r.periquitos.moneda) : '—';
     const comision = r.pago.monto * (r.porcentajeLavador / 100);
     const propinaTxt = r.propina.monto > 0 ? awFormatMoney(r.propina.monto, r.propina.moneda) : '—';
     return `
@@ -192,6 +193,7 @@ function renderTablaRegistros(registros) {
         <td>${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</td>
         <td>${escapeHtml(r.servicio.nombre)}</td>
         <td>${bebidasTxt}</td>
+        <td>${periquitosTxt}</td>
         <td>${awPaymentLabel(r.pago.metodo)}</td>
         <td>${r.pago.referencia ? escapeHtml(r.pago.referencia) : '—'}</td>
         <td>${awFormatMoney(r.pago.monto, r.pago.moneda)}</td>
