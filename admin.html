@@ -682,11 +682,37 @@ footer.small-print{
 
 <nav class="top-nav">
   <a href="index.html" class="brand"><span class="drop"><span>AL</span></span> AutoLavado</a>
-  <div class="nav-links">
+  <div class="nav-links" style="align-items:center;">
     <a href="index.html">Registro</a>
     <a href="admin.html" class="active">Panel admin</a>
+    <span id="logoutEmail" style="color:rgba(255,255,255,0.75); font-size:.8rem; margin-left:8px; display:none;"></span>
+    <button id="logoutBtn" class="btn btn-ghost btn-sm" style="display:none; margin-left:8px; background:transparent; border-color:rgba(255,255,255,0.4); color:#fff;">Cerrar sesión</button>
   </div>
 </nav>
+
+<!-- ===== Pantalla de login ===== -->
+<div id="loginScreen" style="display:flex; min-height:70vh; align-items:center; justify-content:center; padding:20px;">
+  <div class="card" style="max-width:380px; width:100%;">
+    <div class="page-head" style="margin-bottom:18px;">
+      <h1 style="font-size:1.2rem;">Acceso al panel</h1>
+      <p>Inicia sesión con tu usuario administrador.</p>
+    </div>
+    <form id="form-login">
+      <div class="field">
+        <label for="loginEmail">Correo</label>
+        <input type="email" id="loginEmail" required placeholder="tucorreo@ejemplo.com">
+      </div>
+      <div class="field">
+        <label for="loginPassword">Contraseña</label>
+        <input type="password" id="loginPassword" required placeholder="••••••••">
+      </div>
+      <div class="hint" id="loginError" style="color:var(--danger); min-height:18px;"></div>
+      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<div id="adminContent" style="display:none;">
 
 <div class="page">
   <div class="page-head">
@@ -806,6 +832,7 @@ footer.small-print{
     </div>
   </div>
 </div>
+</div>
 
 <!-- Modal de confirmación (eliminar) -->
 <div class="modal-backdrop" id="modalConfirm">
@@ -821,8 +848,10 @@ footer.small-print{
 
 <div class="toast" id="toast"></div>
 
-<footer class="small-print">AutoLavado · datos guardados localmente en este dispositivo</footer>
+<footer class="small-print">AutoLavado · datos sincronizados en la nube (Supabase)</footer>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase-config.js"></script>
 <script src="js/data.js"></script>
 <script src="js/admin.js"></script>
 </body>

@@ -3,34 +3,44 @@
    ========================================================= */
 
 let awDrinkCounts = { cerveza: 0, refresco: 0, energizante: 0 };
+let awServiciosCache = [];
+let awLavadoresCache = [];
+let awBebidasPreciosCache = {};
 
-document.addEventListener('DOMContentLoaded', () => {
-  awSeedIfEmpty();
-  poblarServicios();
-  poblarLavadores();
+document.addEventListener('DOMContentLoaded', async () => {
   bindDrinkSteppers();
   bindMetodoPago();
   bindServicioChange();
   document.getElementById('form-registro').addEventListener('submit', onSubmitRegistro);
-  renderTickets();
+  await cargarConfiguracion();
+  await renderTickets();
 });
 
-/* ---------- Poblar selects desde configuración ---------- */
-function poblarServicios() {
+/* ---------- Cargar servicios / lavadores / bebidas y poblar selects ---------- */
+async function cargarConfiguracion() {
   const sel = document.getElementById('servicioSelect');
-  const servicios = awGetServicios();
+  const selLav = document.getElementById('lavadorSelect');
+  sel.innerHTML = '<option value="">Cargando…</option>';
+  selLav.innerHTML = '<option value="">Cargando…</option>';
+
+  const [servicios, lavadores, bebidasPrecios] = await Promise.all([
+    awGetServicios(),
+    awGetLavadores(),
+    awGetBebidasPrecios()
+  ]);
+  awServiciosCache = servicios;
+  awLavadoresCache = lavadores;
+  awBebidasPreciosCache = bebidasPrecios;
+
   sel.innerHTML = servicios.map(s =>
     `<option value="${s.id}">${escapeHtml(s.nombre)}${s.descripcion ? ' — ' + escapeHtml(s.descripcion) : ''}</option>`
   ).join('') || '<option value="">No hay servicios configurados</option>';
-  actualizarHintPrecio();
-}
 
-function poblarLavadores() {
-  const sel = document.getElementById('lavadorSelect');
-  const lavadores = awGetLavadores();
-  sel.innerHTML = lavadores.map(l =>
+  selLav.innerHTML = lavadores.map(l =>
     `<option value="${l.id}">${escapeHtml(l.nombre)}</option>`
   ).join('') || '<option value="">No hay lavadores configurados</option>';
+
+  actualizarHintPrecio();
 }
 
 function bindServicioChange() {
@@ -42,15 +52,14 @@ function bindServicioChange() {
 }
 
 function actualizarHintPrecio() {
-  const servicios = awGetServicios();
   const id = document.getElementById('servicioSelect').value;
   const moneda = document.getElementById('monedaPago').value;
-  const s = servicios.find(x => x.id === id);
+  const s = awServiciosCache.find(x => x.id === id);
 
   const precioServicioBs = s ? (s.precioBs || 0) : 0;
   const precioServicioUsd = s ? (s.precioUsd || 0) : 0;
-  const bebidasBs = awCalcularCostoBebidas(awDrinkCounts, 'Bs');
-  const bebidasUsd = awCalcularCostoBebidas(awDrinkCounts, 'USD');
+  const bebidasBs = awCalcularCostoBebidas(awDrinkCounts, 'Bs', awBebidasPreciosCache);
+  const bebidasUsd = awCalcularCostoBebidas(awDrinkCounts, 'USD', awBebidasPreciosCache);
 
   const periquitosMonto = parseFloat(document.getElementById('periquitosMonto').value) || 0;
   const periquitosMoneda = document.getElementById('periquitosMoneda').value;
@@ -138,16 +147,17 @@ function updateReferenciaVisibility() {
 }
 
 /* ---------- Envío del formulario ---------- */
-function onSubmitRegistro(e) {
+async function onSubmitRegistro(e) {
   e.preventDefault();
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Guardando…';
 
   const metodo = document.querySelector('input[name="metodoPago"]:checked').value;
-  const servicios = awGetServicios();
-  const lavadores = awGetLavadores();
   const servicioId = document.getElementById('servicioSelect').value;
   const lavadorId = document.getElementById('lavadorSelect').value;
-  const servicio = servicios.find(s => s.id === servicioId);
-  const lavador = lavadores.find(l => l.id === lavadorId);
+  const servicio = awServiciosCache.find(s => s.id === servicioId);
+  const lavador = awLavadoresCache.find(l => l.id === lavadorId);
 
   const registro = {
     id: awUid(),
@@ -183,10 +193,17 @@ function onSubmitRegistro(e) {
     estado: metodo === 'pendiente' ? 'PENDIENTE' : 'PAGADO'
   };
 
-  awAddRegistro(registro);
+  const ok = await awAddRegistro(registro);
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Registrar lavado';
+
+  if (!ok) {
+    showToast('No se pudo guardar. Revisa tu conexión e inténtalo de nuevo.');
+    return;
+  }
   showToast(metodo === 'pendiente' ? 'Registrado como PENDIENTE' : 'Lavado registrado correctamente');
   resetForm();
-  renderTickets();
+  await renderTickets();
 }
 
 function resetForm() {
@@ -201,9 +218,12 @@ function resetForm() {
 }
 
 /* ---------- Render de tickets del día ---------- */
-function renderTickets() {
+async function renderTickets() {
   const list = document.getElementById('ticketList');
-  const all = awGetRegistros().filter(r => awIsToday(r.fecha));
+  list.innerHTML = `<div class="empty-state">Cargando tickets…</div>`;
+
+  const registros = await awGetRegistros();
+  const all = registros.filter(r => awIsToday(r.fecha));
   document.getElementById('ticketsCount').textContent = `${all.length} registro${all.length === 1 ? '' : 's'} hoy`;
 
   if (all.length === 0) {
@@ -305,18 +325,18 @@ function renderTicket(r) {
   `;
 }
 
-function confirmarPago(id) {
+async function confirmarPago(id) {
   const metodo = document.getElementById(`pay-metodo-${id}`).value;
   const moneda = document.getElementById(`pay-moneda-${id}`).value;
   const monto = parseFloat(document.getElementById(`pay-monto-${id}`).value) || 0;
   const referencia = document.getElementById(`pay-ref-${id}`).value.trim();
 
-  awUpdateRegistro(id, {
+  const ok = await awUpdateRegistro(id, {
     estado: 'PAGADO',
     pago: { metodo, moneda, monto, referencia }
   });
-  showToast('Pago confirmado');
-  renderTickets();
+  showToast(ok ? 'Pago confirmado' : 'No se pudo actualizar. Intenta de nuevo.');
+  await renderTickets();
 }
 
 /* ---------- Helpers ---------- */

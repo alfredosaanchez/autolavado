@@ -3,17 +3,79 @@
    ========================================================= */
 
 let awPendingDeleteAction = null;
+let awServiciosCache = [];
+let awLavadoresCache = [];
+let awRegistrosCache = [];
 
 document.addEventListener('DOMContentLoaded', () => {
-  awSeedIfEmpty();
+  bindLoginForm();
+  bindLogoutButton();
+  awSupabase.auth.onAuthStateChange((_event, session) => {
+    if (session) {
+      mostrarPanelAdmin(session);
+    } else {
+      mostrarPantallaLogin();
+    }
+  });
+  awSupabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) mostrarPanelAdmin(session);
+    else mostrarPantallaLogin();
+  });
+});
+
+/* ---------- Login / sesión ---------- */
+function bindLoginForm() {
+  document.getElementById('form-login').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const btn = document.getElementById('loginBtn');
+    const errorMsg = document.getElementById('loginError');
+    errorMsg.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Entrando…';
+
+    const { error } = await awSupabase.auth.signInWithPassword({ email, password });
+
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+    if (error) {
+      errorMsg.textContent = 'Usuario o contraseña incorrectos.';
+    }
+  });
+}
+
+function bindLogoutButton() {
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await awSupabase.auth.signOut();
+  });
+}
+
+function mostrarPantallaLogin() {
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('adminContent').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'none';
+}
+
+function mostrarPanelAdmin(session) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('adminContent').style.display = 'block';
+  document.getElementById('logoutBtn').style.display = 'inline-flex';
+  document.getElementById('logoutEmail').textContent = session.user.email;
+  initAdminPanel();
+}
+
+let awAdminInicializado = false;
+function initAdminPanel() {
+  if (awAdminInicializado) { renderAll(); return; }
+  awAdminInicializado = true;
   bindTabs();
-  poblarFiltroSelects();
   bindFiltros();
   bindModal();
   document.getElementById('btnAddServicio').addEventListener('click', addServicio);
   document.getElementById('btnAddLavador').addEventListener('click', addLavador);
   renderAll();
-});
+}
 
 /* ---------- Tabs ---------- */
 function bindTabs() {
@@ -29,23 +91,21 @@ function bindTabs() {
 
 /* ---------- Filtros ---------- */
 function poblarFiltroSelects() {
-  const lavadores = awGetLavadores();
-  const servicios = awGetServicios();
   const selL = document.getElementById('filtroLavador');
   const selS = document.getElementById('filtroServicio');
-  selL.innerHTML = '<option value="">Todos</option>' + lavadores.map(l => `<option value="${l.id}">${escapeHtml(l.nombre)}</option>`).join('');
-  selS.innerHTML = '<option value="">Todos</option>' + servicios.map(s => `<option value="${s.id}">${escapeHtml(s.nombre)}</option>`).join('');
+  selL.innerHTML = '<option value="">Todos</option>' + awLavadoresCache.map(l => `<option value="${l.id}">${escapeHtml(l.nombre)}</option>`).join('');
+  selS.innerHTML = '<option value="">Todos</option>' + awServiciosCache.map(s => `<option value="${s.id}">${escapeHtml(s.nombre)}</option>`).join('');
 }
 
 function bindFiltros() {
   ['filtroDesde', 'filtroHasta', 'filtroEstado', 'filtroLavador', 'filtroServicio'].forEach(id => {
-    document.getElementById(id).addEventListener('change', renderAll);
+    document.getElementById(id).addEventListener('change', renderFromCache);
   });
   document.getElementById('btnLimpiarFiltros').addEventListener('click', () => {
     ['filtroDesde', 'filtroHasta', 'filtroEstado', 'filtroLavador', 'filtroServicio'].forEach(id => {
       document.getElementById(id).value = '';
     });
-    renderAll();
+    renderFromCache();
   });
 }
 
@@ -56,7 +116,7 @@ function getFiltered() {
   const lavadorId = document.getElementById('filtroLavador').value;
   const servicioId = document.getElementById('filtroServicio').value;
 
-  return awGetRegistros().filter(r => {
+  return awRegistrosCache.filter(r => {
     const fecha = new Date(r.fecha);
     if (desde && fecha < new Date(desde + 'T00:00:00')) return false;
     if (hasta && fecha > new Date(hasta + 'T23:59:59')) return false;
@@ -67,18 +127,34 @@ function getFiltered() {
   });
 }
 
-function renderAll() {
+/* renderAll: recarga todo desde la base de datos */
+async function renderAll() {
+  const [servicios, lavadores, registros] = await Promise.all([
+    awGetServicios(),
+    awGetLavadores(),
+    awGetRegistros()
+  ]);
+  awServiciosCache = servicios;
+  awLavadoresCache = lavadores;
+  awRegistrosCache = registros;
+
+  poblarFiltroSelects();
+  renderFromCache();
+  await renderServicios();
+  await renderBebidas();
+  await renderLavadores();
+}
+
+/* renderFromCache: solo re-pinta con lo que ya está en memoria (filtros, sin red) */
+function renderFromCache() {
   const filtrados = getFiltered();
   renderResumen(filtrados);
   renderTablaRegistros(filtrados);
-  renderServicios();
-  renderBebidas();
-  renderLavadores();
 }
 
 /* ---------- Bebidas (precios) ---------- */
-function renderBebidas() {
-  const precios = awGetBebidasPrecios();
+async function renderBebidas() {
+  const precios = await awGetBebidasPrecios();
   const cont = document.getElementById('listaBebidas');
   cont.innerHTML = Object.keys(AW_BEBIDA_LABELS).map(tipo => {
     const p = precios[tipo] || { precioBs: 0, precioUsd: 0 };
@@ -101,14 +177,11 @@ function renderBebidas() {
   });
 }
 
-function saveBebida(tipo) {
+async function saveBebida(tipo) {
   const item = document.querySelector(`[data-bebida-id="${tipo}"]`);
-  const precios = awGetBebidasPrecios();
-  precios[tipo] = {
-    precioBs: parseFloat(item.querySelector('[data-field="precioBs"]').value) || 0,
-    precioUsd: parseFloat(item.querySelector('[data-field="precioUsd"]').value) || 0
-  };
-  awSaveBebidasPrecios(precios);
+  const precioBs = parseFloat(item.querySelector('[data-field="precioBs"]').value) || 0;
+  const precioUsd = parseFloat(item.querySelector('[data-field="precioUsd"]').value) || 0;
+  await awSaveBebidaPrecioDb(tipo, precioBs, precioUsd);
   showToast('Precio de bebida actualizado');
 }
 
@@ -145,7 +218,6 @@ function renderResumen(registros) {
     </div>
   `).join('');
 
-  // Clientes con pago pendiente
   const tablaPendientes = document.getElementById('tablaPendientes');
   if (tablaPendientes) {
     tablaPendientes.innerHTML = pendientes.length ? pendientes.map(r => `
@@ -160,7 +232,6 @@ function renderResumen(registros) {
     `).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:20px;">No hay clientes con pago pendiente 🎉</td></tr>`;
   }
 
-  // Comisiones por lavador
   const porLavador = {};
   pagados.forEach(r => {
     const key = r.lavador.id + '|' + r.lavador.nombre;
@@ -234,15 +305,15 @@ function renderTablaRegistros(registros) {
     btn.addEventListener('click', () => {
       confirmAction(
         '¿Eliminar este registro? Esta acción no se puede deshacer.',
-        () => { awDeleteRegistro(btn.dataset.delRegistro); showToast('Registro eliminado'); renderAll(); }
+        async () => { await awDeleteRegistro(btn.dataset.delRegistro); showToast('Registro eliminado'); await renderAll(); }
       );
     });
   });
 }
 
 /* ---------- Servicios ---------- */
-function renderServicios() {
-  const servicios = awGetServicios();
+async function renderServicios() {
+  const servicios = awServiciosCache;
   const cont = document.getElementById('listaServicios');
   if (servicios.length === 0) {
     cont.innerHTML = `<div class="empty-state">No hay servicios configurados todavía.</div>`;
@@ -270,48 +341,39 @@ function renderServicios() {
     btn.addEventListener('click', () => {
       confirmAction(
         '¿Eliminar este tipo de servicio? Los registros ya guardados no se verán afectados.',
-        () => { deleteServicio(btn.dataset.delServicio); }
+        () => deleteServicio(btn.dataset.delServicio)
       );
     });
   });
 }
 
-function addServicio() {
-  const servicios = awGetServicios();
-  servicios.push({ id: awUid(), nombre: `Servicio ${servicios.length + 1}`, descripcion: '', precioBs: 0, precioUsd: 0 });
-  awSaveServicios(servicios);
-  renderServicios();
-  poblarFiltroSelects();
+async function addServicio() {
+  await awAddServicioDb({ nombre: `Servicio ${awServiciosCache.length + 1}`, descripcion: '', precioBs: 0, precioUsd: 0 });
   showToast('Servicio agregado');
+  await renderAll();
 }
 
-function saveServicio(id) {
+async function saveServicio(id) {
   const item = document.querySelector(`[data-servicio-id="${id}"]`);
-  const servicios = awGetServicios();
-  const idx = servicios.findIndex(s => s.id === id);
-  if (idx === -1) return;
-  servicios[idx] = {
-    ...servicios[idx],
-    nombre: item.querySelector('[data-field="nombre"]').value.trim() || servicios[idx].nombre,
+  await awUpdateServicioDb(id, {
+    nombre: item.querySelector('[data-field="nombre"]').value.trim(),
     descripcion: item.querySelector('[data-field="descripcion"]').value.trim(),
     precioBs: parseFloat(item.querySelector('[data-field="precioBs"]').value) || 0,
     precioUsd: parseFloat(item.querySelector('[data-field="precioUsd"]').value) || 0
-  };
-  awSaveServicios(servicios);
-  poblarFiltroSelects();
+  });
   showToast('Servicio actualizado');
+  await renderAll();
 }
 
-function deleteServicio(id) {
-  awSaveServicios(awGetServicios().filter(s => s.id !== id));
-  renderServicios();
-  poblarFiltroSelects();
+async function deleteServicio(id) {
+  await awDeleteServicioDb(id);
   showToast('Servicio eliminado');
+  await renderAll();
 }
 
 /* ---------- Lavadores ---------- */
-function renderLavadores() {
-  const lavadores = awGetLavadores();
+async function renderLavadores() {
+  const lavadores = awLavadoresCache;
   const cont = document.getElementById('listaLavadores');
   if (lavadores.length === 0) {
     cont.innerHTML = `<div class="empty-state">No hay lavadores configurados todavía.</div>`;
@@ -336,37 +398,30 @@ function renderLavadores() {
     btn.addEventListener('click', () => {
       confirmAction(
         '¿Eliminar este lavador? Los registros ya guardados no se verán afectados.',
-        () => { deleteLavador(btn.dataset.delLavador); }
+        () => deleteLavador(btn.dataset.delLavador)
       );
     });
   });
 }
 
-function addLavador() {
-  const lavadores = awGetLavadores();
-  lavadores.push({ id: awUid(), nombre: `Lavador ${lavadores.length + 1}` });
-  awSaveLavadores(lavadores);
-  renderLavadores();
-  poblarFiltroSelects();
+async function addLavador() {
+  await awAddLavadorDb(`Lavador ${awLavadoresCache.length + 1}`);
   showToast('Lavador agregado');
+  await renderAll();
 }
 
-function saveLavador(id) {
+async function saveLavador(id) {
   const item = document.querySelector(`[data-lavador-id="${id}"]`);
-  const lavadores = awGetLavadores();
-  const idx = lavadores.findIndex(l => l.id === id);
-  if (idx === -1) return;
-  lavadores[idx].nombre = item.querySelector('[data-field="nombre"]').value.trim() || lavadores[idx].nombre;
-  awSaveLavadores(lavadores);
-  poblarFiltroSelects();
+  const nombre = item.querySelector('[data-field="nombre"]').value.trim();
+  await awUpdateLavadorDb(id, nombre);
   showToast('Lavador actualizado');
+  await renderAll();
 }
 
-function deleteLavador(id) {
-  awSaveLavadores(awGetLavadores().filter(l => l.id !== id));
-  renderLavadores();
-  poblarFiltroSelects();
+async function deleteLavador(id) {
+  await awDeleteLavadorDb(id);
   showToast('Lavador eliminado');
+  await renderAll();
 }
 
 /* ---------- Modal de confirmación ---------- */
