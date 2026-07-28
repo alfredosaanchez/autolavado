@@ -5,17 +5,21 @@
 let awPendingDeleteAction = null;
 let awServiciosCache = [];
 let awLavadoresCache = [];
+let awBebidasSnacksCache = [];
 let awRegistrosCache = [];
+let awGastosCache = [];
+let awTasaCache = 1;
+let awNewIdCounter = 0;
+
+function awTempId() { return `new-${++awNewIdCounter}`; }
 
 document.addEventListener('DOMContentLoaded', () => {
   bindLoginForm();
   bindLogoutButton();
+  bindPasswordToggle();
   awSupabase.auth.onAuthStateChange((_event, session) => {
-    if (session) {
-      mostrarPanelAdmin(session);
-    } else {
-      mostrarPantallaLogin();
-    }
+    if (session) mostrarPanelAdmin(session);
+    else mostrarPantallaLogin();
   });
   awSupabase.auth.getSession().then(({ data: { session } }) => {
     if (session) mostrarPanelAdmin(session);
@@ -24,6 +28,17 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ---------- Login / sesión ---------- */
+function bindPasswordToggle() {
+  const btn = document.getElementById('toggleLoginPassword');
+  const input = document.getElementById('loginPassword');
+  btn.addEventListener('click', () => {
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    btn.textContent = showing ? '👁️' : '🙈';
+    btn.setAttribute('aria-label', showing ? 'Mostrar contraseña' : 'Ocultar contraseña');
+  });
+}
+
 function bindLoginForm() {
   document.getElementById('form-login').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -55,13 +70,17 @@ function mostrarPantallaLogin() {
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('adminContent').style.display = 'none';
   document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('logoutEmail').style.display = 'none';
+  document.getElementById('tasaWidget').style.display = 'none';
 }
 
 function mostrarPanelAdmin(session) {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('adminContent').style.display = 'block';
   document.getElementById('logoutBtn').style.display = 'inline-flex';
+  document.getElementById('logoutEmail').style.display = 'inline';
   document.getElementById('logoutEmail').textContent = session.user.email;
+  document.getElementById('tasaWidget').style.display = 'flex';
   initAdminPanel();
 }
 
@@ -72,9 +91,32 @@ function initAdminPanel() {
   bindTabs();
   bindFiltros();
   bindModal();
-  document.getElementById('btnAddServicio').addEventListener('click', addServicio);
-  document.getElementById('btnAddLavador').addEventListener('click', addLavador);
+  document.getElementById('btnAddServicio').addEventListener('click', addServicioLocal);
+  document.getElementById('btnGuardarServicios').addEventListener('click', guardarServicios);
+  document.getElementById('btnAddBebida').addEventListener('click', addBebidaLocal);
+  document.getElementById('btnGuardarBebidas').addEventListener('click', guardarBebidas);
+  document.getElementById('btnAddLavador').addEventListener('click', addLavadorLocal);
+  document.getElementById('btnGuardarLavadores').addEventListener('click', guardarLavadores);
+  document.getElementById('form-gasto').addEventListener('submit', onSubmitGasto);
+  document.getElementById('btnExportarCsv').addEventListener('click', exportarRegistrosCsv);
+  document.getElementById('btnGuardarTasa').addEventListener('click', guardarTasa);
+  document.getElementById('gastoFecha').value = new Date().toISOString().slice(0, 10);
   renderAll();
+}
+
+/* ---------- Tasa de cambio ---------- */
+async function guardarTasa() {
+  const nueva = parseFloat(document.getElementById('tasaInput').value) || 0;
+  if (nueva <= 0) { showToast('Ingresa una tasa válida'); return; }
+  const btn = document.getElementById('btnGuardarTasa');
+  btn.disabled = true;
+  const ok = await awSetTasa(nueva);
+  btn.disabled = false;
+  if (!ok) { showToast('No se pudo guardar la tasa'); return; }
+  awTasaCache = nueva;
+  showToast('Tasa actualizada');
+  renderServicios();
+  renderBebidas();
 }
 
 /* ---------- Tabs ---------- */
@@ -127,22 +169,40 @@ function getFiltered() {
   });
 }
 
+/* Devuelve {bs, usd} a cobrar de un registro, siempre completos (incluye Periquitos
+   sin importar en qué moneda se haya cargado), usando lo guardado en pago.montoBs/montoUsd
+   con respaldo (tickets viejos) al cálculo simple por pago.monto/pago.moneda. */
+function awMontosRegistro(r) {
+  if (typeof r.pago.montoBs === 'number' && typeof r.pago.montoUsd === 'number') {
+    return { bs: r.pago.montoBs, usd: r.pago.montoUsd };
+  }
+  return awConvertir(r.pago.monto, r.pago.moneda, r.pago.tasaUsada || awTasaCache || 1);
+}
+
 /* renderAll: recarga todo desde la base de datos */
 async function renderAll() {
-  const [servicios, lavadores, registros] = await Promise.all([
+  const [servicios, lavadores, bebidas, registros, gastos, tasa] = await Promise.all([
     awGetServicios(),
     awGetLavadores(),
-    awGetRegistros()
+    awGetBebidasSnacks(),
+    awGetRegistros(),
+    awGetGastos(),
+    awGetTasa()
   ]);
   awServiciosCache = servicios;
   awLavadoresCache = lavadores;
+  awBebidasSnacksCache = bebidas;
   awRegistrosCache = registros;
+  awGastosCache = gastos;
+  awTasaCache = tasa;
+  document.getElementById('tasaInput').value = tasa;
 
   poblarFiltroSelects();
   renderFromCache();
-  await renderServicios();
-  await renderBebidas();
-  await renderLavadores();
+  renderServicios();
+  renderBebidas();
+  renderLavadores();
+  renderGastos();
 }
 
 /* renderFromCache: solo re-pinta con lo que ya está en memoria (filtros, sin red) */
@@ -152,62 +212,35 @@ function renderFromCache() {
   renderTablaRegistros(filtrados);
 }
 
-/* ---------- Bebidas (precios) ---------- */
-async function renderBebidas() {
-  const precios = await awGetBebidasPrecios();
-  const cont = document.getElementById('listaBebidas');
-  cont.innerHTML = Object.keys(AW_BEBIDA_LABELS).map(tipo => {
-    const p = precios[tipo] || { precioBs: 0, precioUsd: 0 };
-    return `
-      <div class="manage-item" data-bebida-id="${tipo}">
-        <div class="mi-fields">
-          <div class="field"><label>Bebida</label><div style="padding:10px 0;font-weight:700;">${AW_BEBIDA_LABELS[tipo]}</div></div>
-          <div class="field"><label>Precio Bs</label><input type="number" step="0.01" min="0" value="${p.precioBs}" data-field="precioBs"></div>
-          <div class="field"><label>Precio $</label><input type="number" step="0.01" min="0" value="${p.precioUsd}" data-field="precioUsd"></div>
-        </div>
-        <div class="row-actions">
-          <button class="btn btn-primary btn-sm" data-save-bebida="${tipo}">Guardar</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  cont.querySelectorAll('[data-save-bebida]').forEach(btn => {
-    btn.addEventListener('click', () => saveBebida(btn.dataset.saveBebida));
-  });
-}
-
-async function saveBebida(tipo) {
-  const item = document.querySelector(`[data-bebida-id="${tipo}"]`);
-  const precioBs = parseFloat(item.querySelector('[data-field="precioBs"]').value) || 0;
-  const precioUsd = parseFloat(item.querySelector('[data-field="precioUsd"]').value) || 0;
-  await awSaveBebidaPrecioDb(tipo, precioBs, precioUsd);
-  showToast('Precio de bebida actualizado');
-}
-
 /* ---------- Resumen (KPIs) ---------- */
 function renderResumen(registros) {
   const pagados = registros.filter(r => r.estado === 'PAGADO');
   const pendientes = registros.filter(r => r.estado === 'PENDIENTE');
 
-  const totalBs = sumBy(pagados.filter(r => r.pago.moneda === 'Bs'), r => r.pago.monto);
-  const totalUsd = sumBy(pagados.filter(r => r.pago.moneda === 'USD'), r => r.pago.monto);
-  const pendienteBs = sumBy(pendientes.filter(r => r.pago.moneda === 'Bs'), r => r.pago.monto);
-  const pendienteUsd = sumBy(pendientes.filter(r => r.pago.moneda === 'USD'), r => r.pago.monto);
+  const totalBs = sumBy(pagados, r => awMontosRegistro(r).bs);
+  const totalUsd = sumBy(pagados, r => awMontosRegistro(r).usd);
+  const pendienteBs = sumBy(pendientes, r => awMontosRegistro(r).bs);
+  const pendienteUsd = sumBy(pendientes, r => awMontosRegistro(r).usd);
   const propinaBs = sumBy(registros.filter(r => r.propina.moneda === 'Bs'), r => r.propina.monto);
   const propinaUsd = sumBy(registros.filter(r => r.propina.moneda === 'USD'), r => r.propina.monto);
+  const gastosBs = sumBy(awGastosCache.filter(g => g.moneda === 'Bs'), g => g.monto);
+  const gastosUsd = sumBy(awGastosCache.filter(g => g.moneda === 'USD'), g => g.monto);
+  const netoBs = totalBs - gastosBs;
+  const netoUsd = totalUsd - gastosUsd;
 
   const kpis = [
     { label: 'Registros filtrados', value: registros.length, sub: `${pagados.length} pagados` },
     { label: 'Total cobrado (Bs)', value: awFormatMoney(totalBs, 'Bs'), sub: 'Solo lavados pagados' },
     { label: 'Total cobrado ($)', value: awFormatMoney(totalUsd, 'USD'), sub: 'Solo lavados pagados' },
     { label: 'Pendientes por cobrar', value: pendientes.length, sub: pendientes.length ? 'Requieren seguimiento' : 'Al día 🎉' },
-    { label: 'Monto pendiente (Bs)', value: awFormatMoney(pendienteBs, 'Bs'), sub: 'Por cobrar' },
-    { label: 'Monto pendiente ($)', value: awFormatMoney(pendienteUsd, 'USD'), sub: 'Por cobrar' },
+    { label: 'Monto pendiente (Bs)', value: awFormatMoney(pendienteBs, 'Bs'), sub: 'Incluye Periquitos' },
+    { label: 'Monto pendiente ($)', value: awFormatMoney(pendienteUsd, 'USD'), sub: 'Incluye Periquitos' },
     { label: 'Propinas (Bs)', value: awFormatMoney(propinaBs, 'Bs'), sub: '' },
     { label: 'Propinas ($)', value: awFormatMoney(propinaUsd, 'USD'), sub: '' },
-    { label: 'Bebidas consumidas', value: sumBy(registros, r => r.bebidas.cerveza + r.bebidas.refresco + r.bebidas.energizante), sub: 'Cerveza + Refresco + Energizante' },
-    { label: 'Carros lavados', value: registros.length, sub: 'En el período filtrado' }
+    { label: 'Gastos (Bs)', value: awFormatMoney(gastosBs, 'Bs'), sub: 'Todo el historial' },
+    { label: 'Gastos ($)', value: awFormatMoney(gastosUsd, 'USD'), sub: 'Todo el historial' },
+    { label: 'Ingresos - Gastos (Bs)', value: awFormatMoney(netoBs, 'Bs'), sub: 'Cifra aproximada' },
+    { label: 'Ingresos - Gastos ($)', value: awFormatMoney(netoUsd, 'USD'), sub: 'Cifra aproximada' }
   ];
 
   document.getElementById('kpiGrid').innerHTML = kpis.map(k => `
@@ -232,18 +265,20 @@ function renderResumen(registros) {
     `).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:20px;">No hay clientes con pago pendiente 🎉</td></tr>`;
   }
 
+  /* Comisiones + propina por lavador */
   const porLavador = {};
   pagados.forEach(r => {
     const key = r.lavador.id + '|' + r.lavador.nombre;
-    if (!porLavador[key]) porLavador[key] = { nombre: r.lavador.nombre, cantidad: 0, totalBs: 0, totalUsd: 0, comisionBs: 0, comisionUsd: 0 };
+    if (!porLavador[key]) porLavador[key] = { nombre: r.lavador.nombre, cantidad: 0, totalBs: 0, totalUsd: 0, comisionBs: 0, comisionUsd: 0, propinaBs: 0, propinaUsd: 0 };
     porLavador[key].cantidad += 1;
-    const comision = r.pago.monto * (r.porcentajeLavador / 100);
-    if (r.pago.moneda === 'USD') {
-      porLavador[key].totalUsd += r.pago.monto;
-      porLavador[key].comisionUsd += comision;
-    } else {
-      porLavador[key].totalBs += r.pago.monto;
-      porLavador[key].comisionBs += comision;
+    const montos = awMontosRegistro(r);
+    porLavador[key].totalBs += montos.bs;
+    porLavador[key].totalUsd += montos.usd;
+    porLavador[key].comisionBs += montos.bs * (r.porcentajeLavador / 100);
+    porLavador[key].comisionUsd += montos.usd * (r.porcentajeLavador / 100);
+    if (r.propina.monto > 0) {
+      if (r.propina.moneda === 'USD') porLavador[key].propinaUsd += r.propina.monto;
+      else porLavador[key].propinaBs += r.propina.monto;
     }
   });
 
@@ -254,8 +289,9 @@ function renderResumen(registros) {
       <td>${f.cantidad}</td>
       <td>${awFormatMoney(f.totalBs, 'Bs')} · ${awFormatMoney(f.totalUsd, 'USD')}</td>
       <td>${awFormatMoney(f.comisionBs, 'Bs')} · ${awFormatMoney(f.comisionUsd, 'USD')}</td>
+      <td>${awFormatMoney(f.propinaBs, 'Bs')} · ${awFormatMoney(f.propinaUsd, 'USD')}</td>
     </tr>
-  `).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);padding:20px;">No hay lavados pagados en este período</td></tr>`;
+  `).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:20px;">No hay lavados pagados en este período</td></tr>`;
 }
 
 function sumBy(arr, fn) { return arr.reduce((acc, x) => acc + (fn(x) || 0), 0); }
@@ -271,10 +307,13 @@ function renderTablaRegistros(registros) {
   }
 
   tbody.innerHTML = registros.map(r => {
-    const bebidasTxt = Object.entries(r.bebidas).filter(([, v]) => v > 0).map(([k, v]) => `${v}×${k[0].toUpperCase()}`).join(' ') || '—';
+    const bebidasTxt = awBebidasATexto(r.bebidas);
     const periquitosTxt = r.periquitos && r.periquitos.monto > 0 ? awFormatMoney(r.periquitos.monto, r.periquitos.moneda) : '—';
     const comision = r.pago.monto * (r.porcentajeLavador / 100);
     const propinaTxt = r.propina.monto > 0 ? awFormatMoney(r.propina.monto, r.propina.moneda) : '—';
+    const accionPendiente = r.estado === 'PENDIENTE'
+      ? `<a class="btn btn-whatsapp btn-sm" href="${awWhatsAppLinkPendiente(r)}" target="_blank" rel="noopener">💬 Recordar</a>`
+      : '';
     return `
       <tr>
         <td>${awFormatDateTime(r.fecha)}</td>
@@ -282,7 +321,7 @@ function renderTablaRegistros(registros) {
         <td>${escapeHtml(r.cliente.telefono)}</td>
         <td>${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</td>
         <td>${escapeHtml(r.servicio.nombre)}</td>
-        <td>${bebidasTxt}</td>
+        <td>${escapeHtml(bebidasTxt)}</td>
         <td>${periquitosTxt}</td>
         <td>${awPaymentLabel(r.pago.metodo)}</td>
         <td>${r.pago.referencia ? escapeHtml(r.pago.referencia) : '—'}</td>
@@ -294,6 +333,7 @@ function renderTablaRegistros(registros) {
         <td><span class="badge ${r.estado.toLowerCase()}">${r.estado}</span></td>
         <td>
           <div class="row-actions">
+            ${accionPendiente}
             <button class="btn btn-danger btn-sm" data-del-registro="${r.id}">Eliminar</button>
           </div>
         </td>
@@ -311,117 +351,297 @@ function renderTablaRegistros(registros) {
   });
 }
 
-/* ---------- Servicios ---------- */
-async function renderServicios() {
-  const servicios = awServiciosCache;
+function awWhatsAppLinkPendiente(r) {
+  const numero = awNormalizarTelefonoVE(r.cliente.telefono);
+  const mensaje = `Hola, buenas Sr(a) ${r.cliente.nombre}, le escribimos de AUTOLAVADO para recordarle que el servicio de su vehículo ${r.carro.modelo} quedó con un saldo pendiente de ${awFormatMoney(r.pago.monto, r.pago.moneda)}. Quedamos atentos para coordinar el pago, ¡gracias por su preferencia!`;
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
+}
+
+/* ---------- Exportar CSV ---------- */
+function exportarRegistrosCsv() {
+  const registros = getFiltered();
+  if (registros.length === 0) { showToast('No hay registros para exportar'); return; }
+
+  const headers = ['Fecha', 'Cliente', 'Teléfono', 'Carro', 'Color', 'Servicio', 'Bebidas/Snacks', 'Periquitos', 'Método', 'Referencia', 'Monto', 'Moneda', 'Monto Bs', 'Monto $', 'Lavador', 'Porcentaje', 'Comisión', 'Propina', 'Estado'];
+  const filas = registros.map(r => {
+    const comision = r.pago.monto * (r.porcentajeLavador / 100);
+    const montos = awMontosRegistro(r);
+    return [
+      awFormatDateTime(r.fecha), r.cliente.nombre, r.cliente.telefono, r.carro.modelo, r.carro.color,
+      r.servicio.nombre, awBebidasATexto(r.bebidas),
+      r.periquitos && r.periquitos.monto > 0 ? `${r.periquitos.descripcion} ${r.periquitos.monto}` : '',
+      awPaymentLabel(r.pago.metodo), r.pago.referencia || '', r.pago.monto, r.pago.moneda,
+      montos.bs.toFixed(2), montos.usd.toFixed(2),
+      r.lavador.nombre, r.porcentajeLavador, comision.toFixed(2), r.propina.monto, r.estado
+    ];
+  });
+
+  const csvEscape = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const csv = [headers, ...filas].map(fila => fila.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `autolavado_registros_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('CSV descargado');
+}
+
+/* ---------- Gastos del negocio ---------- */
+async function onSubmitGasto(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  const ok = await awAddGastoDb({
+    fecha: new Date(document.getElementById('gastoFecha').value + 'T12:00:00').toISOString(),
+    descripcion: document.getElementById('gastoDescripcion').value.trim(),
+    categoria: document.getElementById('gastoCategoria').value.trim(),
+    monto: parseFloat(document.getElementById('gastoMonto').value) || 0,
+    moneda: document.getElementById('gastoMoneda').value
+  });
+  btn.disabled = false;
+  if (!ok) { showToast('No se pudo guardar el gasto'); return; }
+  document.getElementById('form-gasto').reset();
+  document.getElementById('gastoFecha').value = new Date().toISOString().slice(0, 10);
+  showToast('Gasto registrado');
+  awGastosCache = await awGetGastos();
+  renderGastos();
+  renderFromCache();
+}
+
+function renderGastos() {
+  const tbody = document.getElementById('tablaGastos');
+  const totalBs = sumBy(awGastosCache.filter(g => g.moneda === 'Bs'), g => g.monto);
+  const totalUsd = sumBy(awGastosCache.filter(g => g.moneda === 'USD'), g => g.monto);
+  document.getElementById('gastosResumenTxt').textContent = `Total: ${awFormatMoney(totalBs, 'Bs')} · ${awFormatMoney(totalUsd, 'USD')}`;
+
+  if (awGastosCache.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:20px;">No hay gastos registrados todavía</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = awGastosCache.map(g => `
+    <tr>
+      <td>${awFormatDateTime(g.fecha)}</td>
+      <td>${g.categoria ? escapeHtml(g.categoria) : '—'}</td>
+      <td>${escapeHtml(g.descripcion)}</td>
+      <td>${awFormatMoney(g.monto, g.moneda)}</td>
+      <td><button class="btn btn-danger btn-sm" data-del-gasto="${g.id}">Eliminar</button></td>
+    </tr>
+  `).join('');
+
+  tbody.querySelectorAll('[data-del-gasto]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      confirmAction('¿Eliminar este gasto?', async () => {
+        await awDeleteGastoDb(btn.dataset.delGasto);
+        showToast('Gasto eliminado');
+        awGastosCache = await awGetGastos();
+        renderGastos();
+        renderFromCache();
+      });
+    });
+  });
+}
+
+/* ---------- Servicios (guardado en lote, Bs auto por tasa) ---------- */
+function renderServicios() {
   const cont = document.getElementById('listaServicios');
-  if (servicios.length === 0) {
+  if (awServiciosCache.length === 0) {
     cont.innerHTML = `<div class="empty-state">No hay servicios configurados todavía.</div>`;
     return;
   }
-  cont.innerHTML = servicios.map(s => `
+  cont.innerHTML = awServiciosCache.map(s => `
     <div class="manage-item" data-servicio-id="${s.id}">
       <div class="mi-fields">
         <div class="field"><label>Nombre</label><input type="text" value="${escapeAttr(s.nombre)}" data-field="nombre"></div>
         <div class="field"><label>Descripción</label><input type="text" value="${escapeAttr(s.descripcion || '')}" data-field="descripcion"></div>
-        <div class="field"><label>Precio Bs</label><input type="number" step="0.01" min="0" value="${s.precioBs}" data-field="precioBs"></div>
         <div class="field"><label>Precio $</label><input type="number" step="0.01" min="0" value="${s.precioUsd}" data-field="precioUsd"></div>
+        <div class="field"><label>Precio Bs (auto)</label><input type="number" step="0.01" value="${awPrecioBsEfectivo(s, awTasaCache).toFixed(2)}" data-field-bs readonly style="background:var(--bg-soft); color:var(--ink-soft);"></div>
       </div>
       <div class="row-actions">
-        <button class="btn btn-primary btn-sm" data-save-servicio="${s.id}">Guardar</button>
         <button class="btn btn-danger btn-sm" data-del-servicio="${s.id}">Eliminar</button>
       </div>
     </div>
   `).join('');
 
-  cont.querySelectorAll('[data-save-servicio]').forEach(btn => {
-    btn.addEventListener('click', () => saveServicio(btn.dataset.saveServicio));
-  });
+  bindAutoBs(cont);
+
   cont.querySelectorAll('[data-del-servicio]').forEach(btn => {
     btn.addEventListener('click', () => {
-      confirmAction(
-        '¿Eliminar este tipo de servicio? Los registros ya guardados no se verán afectados.',
-        () => deleteServicio(btn.dataset.delServicio)
-      );
+      confirmAction('¿Eliminar este tipo de servicio? Los registros ya guardados no se verán afectados.', () => deleteServicio(btn.dataset.delServicio));
     });
   });
 }
 
-async function addServicio() {
-  await awAddServicioDb({ nombre: `Servicio ${awServiciosCache.length + 1}`, descripcion: '', precioBs: 0, precioUsd: 0 });
-  showToast('Servicio agregado');
-  await renderAll();
+function bindAutoBs(container) {
+  container.querySelectorAll('[data-field="precioUsd"]').forEach(input => {
+    input.addEventListener('input', () => {
+      const bsInput = input.closest('.manage-item').querySelector('[data-field-bs]');
+      const usd = parseFloat(input.value) || 0;
+      bsInput.value = (usd * awTasaCache).toFixed(2);
+    });
+  });
 }
 
-async function saveServicio(id) {
-  const item = document.querySelector(`[data-servicio-id="${id}"]`);
-  await awUpdateServicioDb(id, {
-    nombre: item.querySelector('[data-field="nombre"]').value.trim(),
-    descripcion: item.querySelector('[data-field="descripcion"]').value.trim(),
-    precioBs: parseFloat(item.querySelector('[data-field="precioBs"]').value) || 0,
-    precioUsd: parseFloat(item.querySelector('[data-field="precioUsd"]').value) || 0
-  });
-  showToast('Servicio actualizado');
+function addServicioLocal() {
+  awServiciosCache.push({ id: awTempId(), nombre: `Servicio nuevo`, descripcion: '', precioBs: 0, precioUsd: 0, _nuevo: true });
+  renderServicios();
+}
+
+async function guardarServicios() {
+  const btn = document.getElementById('btnGuardarServicios');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+  for (const s of awServiciosCache) {
+    const item = document.querySelector(`[data-servicio-id="${s.id}"]`);
+    if (!item) continue;
+    const precioUsd = parseFloat(item.querySelector('[data-field="precioUsd"]').value) || 0;
+    const cambios = {
+      nombre: item.querySelector('[data-field="nombre"]').value.trim() || 'Servicio',
+      descripcion: item.querySelector('[data-field="descripcion"]').value.trim(),
+      precioUsd: precioUsd,
+      precioBs: precioUsd * awTasaCache
+    };
+    if (s._nuevo) await awAddServicioDb(cambios);
+    else await awUpdateServicioDb(s.id, cambios);
+  }
+  btn.disabled = false;
+  btn.textContent = '💾 Guardar cambios';
+  showToast('Servicios guardados');
   await renderAll();
 }
 
 async function deleteServicio(id) {
-  await awDeleteServicioDb(id);
+  if (!String(id).startsWith('new-')) await awDeleteServicioDb(id);
+  awServiciosCache = awServiciosCache.filter(s => s.id !== id);
+  renderServicios();
   showToast('Servicio eliminado');
+}
+
+/* ---------- Bebidas y Snacks (guardado en lote, con emoji, Bs auto por tasa) ---------- */
+function renderBebidas() {
+  const cont = document.getElementById('listaBebidas');
+  if (awBebidasSnacksCache.length === 0) {
+    cont.innerHTML = `<div class="empty-state">No hay bebidas/snacks configurados todavía.</div>`;
+    return;
+  }
+  cont.innerHTML = awBebidasSnacksCache.map(item => `
+    <div class="manage-item" data-bebida-id="${item.id}">
+      <div class="mi-fields">
+        <div class="field" style="max-width:90px;">
+          <label>Emoji</label>
+          <select data-field="emoji">
+            ${AW_EMOJIS_BEBIDAS_SNACKS.map(e => `<option value="${e}" ${e === item.emoji ? 'selected' : ''}>${e}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Nombre</label><input type="text" value="${escapeAttr(item.nombre)}" data-field="nombre"></div>
+        <div class="field"><label>Precio $</label><input type="number" step="0.01" min="0" value="${item.precioUsd}" data-field="precioUsd"></div>
+        <div class="field"><label>Precio Bs (auto)</label><input type="number" step="0.01" value="${awPrecioBsEfectivo(item, awTasaCache).toFixed(2)}" data-field-bs readonly style="background:var(--bg-soft); color:var(--ink-soft);"></div>
+      </div>
+      <div class="row-actions">
+        <button class="btn btn-danger btn-sm" data-del-bebida="${item.id}">Eliminar</button>
+      </div>
+    </div>
+  `).join('');
+
+  bindAutoBs(cont);
+
+  cont.querySelectorAll('[data-del-bebida]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      confirmAction('¿Eliminar este artículo? Los registros ya guardados no se verán afectados.', () => deleteBebida(btn.dataset.delBebida));
+    });
+  });
+}
+
+function addBebidaLocal() {
+  awBebidasSnacksCache.push({ id: awTempId(), nombre: 'Nuevo artículo', emoji: '🥤', precioBs: 0, precioUsd: 0, _nuevo: true });
+  renderBebidas();
+}
+
+async function guardarBebidas() {
+  const btn = document.getElementById('btnGuardarBebidas');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+  for (const item of awBebidasSnacksCache) {
+    const el = document.querySelector(`[data-bebida-id="${item.id}"]`);
+    if (!el) continue;
+    const precioUsd = parseFloat(el.querySelector('[data-field="precioUsd"]').value) || 0;
+    const cambios = {
+      nombre: el.querySelector('[data-field="nombre"]').value.trim() || 'Artículo',
+      emoji: el.querySelector('[data-field="emoji"]').value,
+      precioUsd: precioUsd,
+      precioBs: precioUsd * awTasaCache
+    };
+    if (item._nuevo) await awAddBebidaSnackDb(cambios);
+    else await awUpdateBebidaSnackDb(item.id, cambios);
+  }
+  btn.disabled = false;
+  btn.textContent = '💾 Guardar cambios';
+  showToast('Bebidas y Snacks guardados');
   await renderAll();
 }
 
-/* ---------- Lavadores ---------- */
-async function renderLavadores() {
-  const lavadores = awLavadoresCache;
+async function deleteBebida(id) {
+  if (!String(id).startsWith('new-')) await awDeleteBebidaSnackDb(id);
+  awBebidasSnacksCache = awBebidasSnacksCache.filter(i => i.id !== id);
+  renderBebidas();
+  showToast('Artículo eliminado');
+}
+
+/* ---------- Lavadores (guardado en lote) ---------- */
+function renderLavadores() {
   const cont = document.getElementById('listaLavadores');
-  if (lavadores.length === 0) {
+  if (awLavadoresCache.length === 0) {
     cont.innerHTML = `<div class="empty-state">No hay lavadores configurados todavía.</div>`;
     return;
   }
-  cont.innerHTML = lavadores.map(l => `
+  cont.innerHTML = awLavadoresCache.map(l => `
     <div class="manage-item" data-lavador-id="${l.id}">
       <div class="mi-fields">
         <div class="field"><label>Nombre</label><input type="text" value="${escapeAttr(l.nombre)}" data-field="nombre"></div>
       </div>
       <div class="row-actions">
-        <button class="btn btn-primary btn-sm" data-save-lavador="${l.id}">Guardar</button>
         <button class="btn btn-danger btn-sm" data-del-lavador="${l.id}">Eliminar</button>
       </div>
     </div>
   `).join('');
 
-  cont.querySelectorAll('[data-save-lavador]').forEach(btn => {
-    btn.addEventListener('click', () => saveLavador(btn.dataset.saveLavador));
-  });
   cont.querySelectorAll('[data-del-lavador]').forEach(btn => {
     btn.addEventListener('click', () => {
-      confirmAction(
-        '¿Eliminar este lavador? Los registros ya guardados no se verán afectados.',
-        () => deleteLavador(btn.dataset.delLavador)
-      );
+      confirmAction('¿Eliminar este lavador? Los registros ya guardados no se verán afectados.', () => deleteLavador(btn.dataset.delLavador));
     });
   });
 }
 
-async function addLavador() {
-  await awAddLavadorDb(`Lavador ${awLavadoresCache.length + 1}`);
-  showToast('Lavador agregado');
-  await renderAll();
+function addLavadorLocal() {
+  awLavadoresCache.push({ id: awTempId(), nombre: 'Lavador nuevo', _nuevo: true });
+  renderLavadores();
 }
 
-async function saveLavador(id) {
-  const item = document.querySelector(`[data-lavador-id="${id}"]`);
-  const nombre = item.querySelector('[data-field="nombre"]').value.trim();
-  await awUpdateLavadorDb(id, nombre);
-  showToast('Lavador actualizado');
+async function guardarLavadores() {
+  const btn = document.getElementById('btnGuardarLavadores');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+  for (const l of awLavadoresCache) {
+    const el = document.querySelector(`[data-lavador-id="${l.id}"]`);
+    if (!el) continue;
+    const nombre = el.querySelector('[data-field="nombre"]').value.trim() || 'Lavador';
+    if (l._nuevo) await awAddLavadorDb(nombre);
+    else await awUpdateLavadorDb(l.id, nombre);
+  }
+  btn.disabled = false;
+  btn.textContent = '💾 Guardar cambios';
+  showToast('Lavadores guardados');
   await renderAll();
 }
 
 async function deleteLavador(id) {
-  await awDeleteLavadorDb(id);
+  if (!String(id).startsWith('new-')) await awDeleteLavadorDb(id);
+  awLavadoresCache = awLavadoresCache.filter(l => l.id !== id);
+  renderLavadores();
   showToast('Lavador eliminado');
-  await renderAll();
 }
 
 /* ---------- Modal de confirmación ---------- */

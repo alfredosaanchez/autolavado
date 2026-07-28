@@ -242,7 +242,7 @@ input::placeholder{ color: #9FB0B8; }
 /* Contador de bebidas */
 .drink-grid{
   display:grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 12px;
 }
 @media (max-width: 560px){ .drink-grid{ grid-template-columns: 1fr; } }
@@ -682,9 +682,14 @@ footer.small-print{
 
 <nav class="top-nav">
   <a href="index.html" class="brand"><span class="drop"><span>AL</span></span> AutoLavado</a>
-  <div class="nav-links">
-    <a href="index.html" class="active">Registro</a>
-    <a href="admin.html">Panel admin</a>
+  <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+    <div class="nav-links">
+      <a href="index.html" class="active">Registro</a>
+      <a href="admin.html">Panel admin</a>
+    </div>
+    <div style="font-size:.75rem; color:rgba(255,255,255,0.85); font-family:var(--font-mono);">
+      Tasa: <strong id="tasaDisplay">Bs 1,00</strong> / $
+    </div>
   </div>
 </nav>
 
@@ -737,32 +742,9 @@ footer.small-print{
         </div>
 
         <div class="form-section">
-          <div class="section-eyebrow">Bebidas consumidas</div>
-          <div class="drink-grid">
-            <div class="drink-card">
-              <div class="drink-label">🍺 Cerveza</div>
-              <div class="stepper">
-                <button type="button" data-drink="cerveza" data-op="-">−</button>
-                <span id="qty-cerveza">0</span>
-                <button type="button" data-drink="cerveza" data-op="+">+</button>
-              </div>
-            </div>
-            <div class="drink-card">
-              <div class="drink-label">🥤 Refresco</div>
-              <div class="stepper">
-                <button type="button" data-drink="refresco" data-op="-">−</button>
-                <span id="qty-refresco">0</span>
-                <button type="button" data-drink="refresco" data-op="+">+</button>
-              </div>
-            </div>
-            <div class="drink-card">
-              <div class="drink-label">⚡ Energizante</div>
-              <div class="stepper">
-                <button type="button" data-drink="energizante" data-op="-">−</button>
-                <span id="qty-energizante">0</span>
-                <button type="button" data-drink="energizante" data-op="+">+</button>
-              </div>
-            </div>
+          <div class="section-eyebrow">Bebidas y Snacks consumidos</div>
+          <div class="drink-grid" id="drinkGrid">
+            <div class="hint">Cargando…</div>
           </div>
         </div>
 
@@ -896,6 +878,9 @@ footer.small-print{
         <h2>Tickets de hoy</h2>
         <span class="count" id="ticketsCount">0 registros</span>
       </div>
+      <div class="field" style="margin-bottom:14px;">
+        <input type="text" id="buscadorTickets" placeholder="🔎 Buscar por cliente o vehículo...">
+      </div>
       <div class="ticket-list" id="ticketList"></div>
     </div>
   </div>
@@ -903,7 +888,7 @@ footer.small-print{
 
 <div class="toast" id="toast"></div>
 
-<footer class="small-print">AutoLavado · ajss2026</footer>
+<footer class="small-print">AutoLavado · datos sincronizados en la nube (Supabase)</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/supabase-config.js"></script>

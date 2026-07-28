@@ -235,7 +235,7 @@ input::placeholder{ color: #9FB0B8; }
 /* Contador de bebidas */
 .drink-grid{
   display:grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 12px;
 }
 @media (max-width: 560px){ .drink-grid{ grid-template-columns: 1fr; } }
