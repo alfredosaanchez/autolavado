@@ -171,7 +171,7 @@ function aplicarRestriccionesPorRol(rol) {
   document.getElementById('tabBtnUsuarios').style.display = rol === 'dueno' ? 'block' : 'none';
 
   // Cajero: solo ve Resumen. El resto de pestañas se ocultan.
-  const tabsRestringidas = ['registros', 'gastos', 'servicios', 'bebidas', 'lavadores'];
+  const tabsRestringidas = ['gastos', 'servicios', 'bebidas', 'lavadores'];
   tabsRestringidas.forEach(tab => {
     const btn = document.querySelector(`.admin-tab-btn[data-tab="${tab}"]`);
     if (btn) btn.style.display = (rol === 'cajero') ? 'none' : 'block';
