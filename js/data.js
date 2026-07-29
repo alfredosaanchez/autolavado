@@ -12,6 +12,44 @@ function awUid() {
 }
 
 /* ---------- Tasa de cambio ---------- */
+/* ---------- Perfiles / Roles ---------- */
+const AW_ROLES_INFO = {
+  'dueño': { label: '👑 Dueño', desc: 'Acceso total: todo lo de Administrador, además de aprobar usuarios nuevos y cambiar el nivel de cualquiera.' },
+  'administrador': { label: '🛠️ Administrador', desc: 'Ve y edita todo el panel (Resumen, Registros, Servicios, Bebidas y Snacks, Lavadores, Gastos, Tasa). No puede gestionar usuarios.' },
+  'supervisor': { label: '👀 Supervisor', desc: 'Solo puede ver el Resumen y los Registros. No puede editar configuración ni eliminar registros.' },
+  'pendiente': { label: '⏳ Pendiente', desc: 'Cuenta creada pero sin aprobar todavía. No ve nada del panel hasta que el Dueño le asigne un nivel.' }
+};
+
+async function awSignUp(email, password) {
+  const { data, error } = await awSupabase.auth.signUp({ email, password });
+  if (error) return { ok: false, error };
+  if (data.user) {
+    await awSupabase.from('perfiles_admin').insert({ id: data.user.id, email: data.user.email, rol: 'pendiente' });
+  }
+  await awSupabase.auth.signOut();
+  return { ok: true };
+}
+
+async function awGetPerfilPropio() {
+  const { data: { user } } = await awSupabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await awSupabase.from('perfiles_admin').select('*').eq('id', user.id).maybeSingle();
+  if (error) { console.error(error); return null; }
+  return data;
+}
+
+async function awGetPerfiles() {
+  const { data, error } = await awSupabase.from('perfiles_admin').select('*').order('created_at');
+  if (error) { console.error(error); return []; }
+  return data;
+}
+
+async function awUpdateRolUsuario(id, rol) {
+  const { error } = await awSupabase.from('perfiles_admin').update({ rol, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { console.error(error); return false; }
+  return true;
+}
+
 async function awGetTasa() {
   const { data, error } = await awSupabase.from('configuracion').select('tasa_usd_bs').eq('id', 1).single();
   if (error) { console.error(error); return 1; }
@@ -232,6 +270,30 @@ function awIsToday(iso) {
 function awPaymentLabel(metodo) {
   return { efectivo: 'Efectivo', punto: 'Punto de venta', movil: 'Pago móvil', pendiente: 'Pendiente' }[metodo] || metodo;
 }
+
+/* ---------- Perfiles / Usuarios (jerarquía) ---------- */
+async function awGetMiPerfil() {
+  const { data: { user } } = await awSupabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await awSupabase.from('perfiles').select('*').eq('id', user.id).single();
+  if (error) { console.error(error); return null; }
+  return data;
+}
+
+async function awGetPerfiles() {
+  const { data, error } = await awSupabase.from('perfiles').select('*').order('created_at');
+  if (error) { console.error(error); return []; }
+  return data;
+}
+
+async function awActualizarPerfil(id, cambios) {
+  const { error } = await awSupabase.from('perfiles').update(cambios).eq('id', id);
+  if (error) { console.error(error); return false; }
+  return true;
+}
+
+const AW_ROL_LABELS = { dueno: 'Dueño', gerente: 'Gerente', cajero: 'Cajero' };
+const AW_ESTADO_PERFIL_LABELS = { pendiente: 'Pendiente', activo: 'Activo', rechazado: 'Rechazado' };
 
 /* ---------- Gastos del negocio ---------- */
 async function awGetGastos() {

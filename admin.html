@@ -681,7 +681,7 @@ footer.small-print{
 <body>
 
 <nav class="top-nav">
-  <a href="index.html" class="brand"><span class="drop"><span>VF</span></span> VENTAFALCON</a>
+  <a href="index.html" class="brand"><span class="drop"><span>AL</span></span> AutoLavado</a>
   <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
     <div class="nav-links" style="align-items:center;">
       <a href="index.html">Registro</a>
@@ -698,28 +698,74 @@ footer.small-print{
   </div>
 </nav>
 
-<!-- ===== Pantalla de login ===== -->
+<!-- ===== Pantalla de login / registro ===== -->
 <div id="loginScreen" style="display:flex; min-height:70vh; align-items:center; justify-content:center; padding:20px;">
   <div class="card" style="max-width:380px; width:100%;">
-    <div class="page-head" style="margin-bottom:18px;">
-      <h1 style="font-size:1.2rem;">Acceso al panel</h1>
-      <p>Inicia sesión con tu usuario administrador.</p>
-    </div>
-    <form id="form-login">
-      <div class="field">
-        <label for="loginEmail">Correo</label>
-        <input type="email" id="loginEmail" required placeholder="tucorreo@ejemplo.com">
+
+    <div id="loginModeLogin">
+      <div class="page-head" style="margin-bottom:18px;">
+        <h1 style="font-size:1.2rem;">Acceso al panel</h1>
+        <p>Inicia sesión con tu usuario administrador.</p>
       </div>
-      <div class="field">
-        <label for="loginPassword">Contraseña</label>
-        <div style="position:relative;">
-          <input type="password" id="loginPassword" required placeholder="••••••••" style="padding-right:44px;">
-          <button type="button" id="toggleLoginPassword" aria-label="Mostrar contraseña" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:1.1rem; padding:6px;">👁️</button>
+      <form id="form-login">
+        <div class="field">
+          <label for="loginEmail">Correo</label>
+          <input type="email" id="loginEmail" required placeholder="tucorreo@ejemplo.com">
         </div>
+        <div class="field">
+          <label for="loginPassword">Contraseña</label>
+          <div style="position:relative;">
+            <input type="password" id="loginPassword" required placeholder="••••••••" style="padding-right:44px;">
+            <button type="button" id="toggleLoginPassword" aria-label="Mostrar contraseña" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:1.1rem; padding:6px;">👁️</button>
+          </div>
+        </div>
+        <div class="hint" id="loginError" style="color:var(--danger); min-height:18px;"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Entrar</button>
+      </form>
+      <p class="hint" style="text-align:center; margin-top:14px;">
+        ¿No tienes cuenta? <a href="#" id="linkIrRegistro" style="color:var(--primary); font-weight:600;">Regístrate</a>
+      </p>
+    </div>
+
+    <div id="loginModeRegistro" style="display:none;">
+      <div class="page-head" style="margin-bottom:18px;">
+        <h1 style="font-size:1.2rem;">Crear cuenta</h1>
+        <p>Después de registrarte, el administrador debe aprobar tu acceso.</p>
       </div>
-      <div class="hint" id="loginError" style="color:var(--danger); min-height:18px;"></div>
-      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Entrar</button>
-    </form>
+      <form id="form-registro-usuario">
+        <div class="field">
+          <label for="registroEmail">Correo</label>
+          <input type="email" id="registroEmail" required placeholder="tucorreo@ejemplo.com">
+        </div>
+        <div class="field">
+          <label for="registroPassword">Contraseña</label>
+          <input type="password" id="registroPassword" required minlength="6" placeholder="Mínimo 6 caracteres">
+        </div>
+        <div class="hint" id="registroError" style="color:var(--danger); min-height:18px;"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="registroBtn">Crear cuenta</button>
+      </form>
+      <p class="hint" style="text-align:center; margin-top:14px;">
+        ¿Ya tienes cuenta? <a href="#" id="linkIrLogin" style="color:var(--primary); font-weight:600;">Inicia sesión</a>
+      </p>
+    </div>
+
+    <div id="loginModeRegistroOk" style="display:none; text-align:center;">
+      <div style="font-size:2rem; margin-bottom:10px;">✅</div>
+      <h1 style="font-size:1.1rem; color:var(--primary-dark);">Cuenta creada</h1>
+      <p class="hint">Contacta con soporte para que validen tu registro.</p>
+      <button class="btn btn-ghost btn-sm" id="btnVolverLoginDesdeOk" style="margin-top:14px;">Volver al inicio de sesión</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== Pantalla de cuenta pendiente de aprobación ===== -->
+<div id="pendingScreen" style="display:none; min-height:70vh; align-items:center; justify-content:center; padding:20px;">
+  <div class="card" style="max-width:380px; width:100%; text-align:center;">
+    <div style="font-size:2rem; margin-bottom:10px;">⏳</div>
+    <h1 style="font-size:1.1rem; color:var(--primary-dark);">Cuenta pendiente de aprobación</h1>
+    <p class="hint">Tu acceso todavía no ha sido aprobado. Contacta con soporte para que validen tu registro.</p>
+    <button class="btn btn-ghost btn-sm" id="btnCerrarSesionPendiente" style="margin-top:14px;">Cerrar sesión</button>
   </div>
 </div>
 
@@ -739,6 +785,7 @@ footer.small-print{
       <button class="admin-tab-btn" data-tab="servicios">🧼 Servicios</button>
       <button class="admin-tab-btn" data-tab="bebidas">🥤 Bebidas y Snacks</button>
       <button class="admin-tab-btn" data-tab="lavadores">👤 Lavadores</button>
+      <button class="admin-tab-btn" data-tab="usuarios" id="tabBtnUsuarios" style="display:none;">👥 Usuarios</button>
     </div>
 
     <div>
@@ -904,6 +951,27 @@ footer.small-print{
         </div>
         <div class="manage-list" id="listaLavadores"></div>
       </div>
+
+      <!-- ===== Usuarios (solo Dueño) ===== -->
+      <div class="admin-panel" id="panel-usuarios">
+        <div class="manager-head"><h2>Usuarios y niveles</h2></div>
+        <div class="card" style="margin-bottom:20px;">
+          <div class="section-eyebrow">Niveles</div>
+          <p class="hint" style="margin:0;">
+            <strong>Dueño:</strong> acceso total, incluyendo gestionar usuarios y la tasa.<br>
+            <strong>Gerente:</strong> ve y edita todo el panel, menos Usuarios y la tasa (la ve, no la edita).<br>
+            <strong>Cajero:</strong> solo ve la pestaña Resumen (sin editar), pero sí puede modificar la tasa.
+          </p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Correo</th><th>Registrado</th><th>Estado</th><th>Nivel</th><th>Acciones</th></tr>
+            </thead>
+            <tbody id="tablaUsuarios"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -923,7 +991,7 @@ footer.small-print{
 
 <div class="toast" id="toast"></div>
 
-<footer class="small-print">AutoLavado · ajss2026</footer>
+<footer class="small-print">AutoLavado · datos sincronizados en la nube (Supabase)</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/supabase-config.js"></script>

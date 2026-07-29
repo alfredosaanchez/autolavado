@@ -10,24 +10,46 @@ let awRegistrosCache = [];
 let awGastosCache = [];
 let awTasaCache = 1;
 let awNewIdCounter = 0;
+let awPerfilActual = null; // { id, email, rol, estado }
 
 function awTempId() { return `new-${++awNewIdCounter}`; }
 
 document.addEventListener('DOMContentLoaded', () => {
   bindLoginForm();
+  bindRegistroForm();
+  bindModeSwitchLinks();
   bindLogoutButton();
   bindPasswordToggle();
   awSupabase.auth.onAuthStateChange((_event, session) => {
-    if (session) mostrarPanelAdmin(session);
+    if (session) resolverSesion(session);
     else mostrarPantallaLogin();
   });
   awSupabase.auth.getSession().then(({ data: { session } }) => {
-    if (session) mostrarPanelAdmin(session);
+    if (session) resolverSesion(session);
     else mostrarPantallaLogin();
   });
 });
 
-/* ---------- Login / sesión ---------- */
+/* ---------- Cambiar entre modo Login / Registro / Registrado-OK ---------- */
+function bindModeSwitchLinks() {
+  document.getElementById('linkIrRegistro').addEventListener('click', (e) => {
+    e.preventDefault();
+    mostrarModoLogin('registro');
+  });
+  document.getElementById('linkIrLogin').addEventListener('click', (e) => {
+    e.preventDefault();
+    mostrarModoLogin('login');
+  });
+  document.getElementById('btnVolverLoginDesdeOk').addEventListener('click', () => mostrarModoLogin('login'));
+}
+
+function mostrarModoLogin(modo) {
+  document.getElementById('loginModeLogin').style.display = modo === 'login' ? 'block' : 'none';
+  document.getElementById('loginModeRegistro').style.display = modo === 'registro' ? 'block' : 'none';
+  document.getElementById('loginModeRegistroOk').style.display = modo === 'ok' ? 'block' : 'none';
+}
+
+/* ---------- Login ---------- */
 function bindPasswordToggle() {
   const btn = document.getElementById('toggleLoginPassword');
   const input = document.getElementById('loginPassword');
@@ -60,28 +82,115 @@ function bindLoginForm() {
   });
 }
 
+/* ---------- Registro (autoregistro, queda pendiente de aprobación) ---------- */
+function bindRegistroForm() {
+  document.getElementById('form-registro-usuario').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('registroEmail').value.trim();
+    const password = document.getElementById('registroPassword').value;
+    const btn = document.getElementById('registroBtn');
+    const errorMsg = document.getElementById('registroError');
+    errorMsg.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Creando…';
+
+    const { error } = await awSupabase.auth.signUp({ email, password });
+
+    btn.disabled = false;
+    btn.textContent = 'Crear cuenta';
+    if (error) {
+      errorMsg.textContent = error.message === 'User already registered'
+        ? 'Ese correo ya tiene una cuenta.'
+        : 'No se pudo crear la cuenta. Intenta de nuevo.';
+      return;
+    }
+    document.getElementById('form-registro-usuario').reset();
+    mostrarModoLogin('ok');
+  });
+}
+
 function bindLogoutButton() {
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await awSupabase.auth.signOut();
   });
+  document.getElementById('btnCerrarSesionPendiente').addEventListener('click', async () => {
+    await awSupabase.auth.signOut();
+  });
+}
+
+/* ---------- Resolver sesión: decide si mostrar panel, pantalla de pendiente, o login ---------- */
+async function resolverSesion(session) {
+  const perfil = await awGetMiPerfil();
+  awPerfilActual = perfil;
+  if (!perfil || perfil.estado !== 'activo') {
+    mostrarPantallaPendiente(perfil);
+    return;
+  }
+  mostrarPanelAdmin(session, perfil);
 }
 
 function mostrarPantallaLogin() {
+  awPerfilActual = null;
   document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('pendingScreen').style.display = 'none';
   document.getElementById('adminContent').style.display = 'none';
   document.getElementById('logoutBtn').style.display = 'none';
   document.getElementById('logoutEmail').style.display = 'none';
   document.getElementById('tasaWidget').style.display = 'none';
+  mostrarModoLogin('login');
 }
 
-function mostrarPanelAdmin(session) {
+function mostrarPantallaPendiente(perfil) {
   document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('pendingScreen').style.display = 'flex';
+  document.getElementById('adminContent').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('logoutEmail').style.display = 'none';
+  document.getElementById('tasaWidget').style.display = 'none';
+  const msgEl = document.querySelector('#pendingScreen p.hint');
+  if (perfil && perfil.estado === 'rechazado') {
+    msgEl.textContent = 'Tu acceso fue rechazado por el administrador. Contáctalo si crees que es un error.';
+  } else {
+    msgEl.textContent = 'Tu acceso todavía no ha sido aprobado. Contacta al dueño del negocio para que lo apruebe.';
+  }
+}
+
+function mostrarPanelAdmin(session, perfil) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('pendingScreen').style.display = 'none';
   document.getElementById('adminContent').style.display = 'block';
   document.getElementById('logoutBtn').style.display = 'inline-flex';
   document.getElementById('logoutEmail').style.display = 'inline';
-  document.getElementById('logoutEmail').textContent = session.user.email;
-  document.getElementById('tasaWidget').style.display = 'flex';
+  document.getElementById('logoutEmail').textContent = `${session.user.email} (${AW_ROL_LABELS[perfil.rol] || perfil.rol})`;
+  aplicarRestriccionesPorRol(perfil.rol);
   initAdminPanel();
+}
+
+/* ---------- Restricciones de UI según el rol (la seguridad real está en RLS) ---------- */
+function aplicarRestriccionesPorRol(rol) {
+  document.getElementById('tabBtnUsuarios').style.display = rol === 'dueno' ? 'block' : 'none';
+
+  // Cajero: solo ve Resumen. El resto de pestañas se ocultan.
+  const tabsRestringidas = ['registros', 'gastos', 'servicios', 'bebidas', 'lavadores'];
+  tabsRestringidas.forEach(tab => {
+    const btn = document.querySelector(`.admin-tab-btn[data-tab="${tab}"]`);
+    if (btn) btn.style.display = (rol === 'cajero') ? 'none' : 'block';
+  });
+  if (rol === 'cajero') {
+    document.querySelectorAll('.admin-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector('.admin-tab-btn[data-tab="resumen"]').classList.add('active');
+    document.getElementById('panel-resumen').classList.add('active');
+  }
+
+  // Tasa: Dueño y Cajero la pueden editar; Gerente solo la ve.
+  const tasaWidget = document.getElementById('tasaWidget');
+  tasaWidget.style.display = 'flex';
+  const inputTasa = document.getElementById('tasaInput');
+  const btnTasa = document.getElementById('btnGuardarTasa');
+  const puedeEditarTasa = (rol === 'dueno' || rol === 'cajero');
+  inputTasa.disabled = !puedeEditarTasa;
+  btnTasa.style.display = puedeEditarTasa ? 'inline-flex' : 'none';
 }
 
 let awAdminInicializado = false;
@@ -203,6 +312,7 @@ async function renderAll() {
   renderBebidas();
   renderLavadores();
   renderGastos();
+  if (awPerfilActual && awPerfilActual.rol === 'dueno') await renderUsuarios();
 }
 
 /* renderFromCache: solo re-pinta con lo que ya está en memoria (filtros, sin red) */
@@ -334,7 +444,7 @@ function renderTablaRegistros(registros) {
         <td>
           <div class="row-actions">
             ${accionPendiente}
-            <button class="btn btn-danger btn-sm" data-del-registro="${r.id}">Eliminar</button>
+            ${awPerfilActual && awPerfilActual.rol !== 'cajero' ? `<button class="btn btn-danger btn-sm" data-del-registro="${r.id}">Eliminar</button>` : ''}
           </div>
         </td>
       </tr>
@@ -662,6 +772,95 @@ function confirmAction(text, action) {
 function closeModal() {
   document.getElementById('modalConfirm').classList.remove('open');
   awPendingDeleteAction = null;
+}
+
+/* ---------- Usuarios y niveles (solo Dueño) ---------- */
+const AW_ROLES_DISPONIBLES = ['cajero', 'gerente', 'dueno'];
+
+async function renderUsuarios() {
+  const tbody = document.getElementById('tablaUsuarios');
+  if (!tbody) return;
+  const perfiles = await awGetPerfiles();
+  if (perfiles.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:20px;">No hay usuarios registrados todavía</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = perfiles.map(p => {
+    const esUnoMismo = p.id === awPerfilActual.id;
+    let acciones = '';
+    if (p.estado === 'pendiente') {
+      acciones = `
+        <div class="row-actions">
+          <select data-nivel-nuevo="${p.id}">
+            ${AW_ROLES_DISPONIBLES.map(r => `<option value="${r}" ${r === p.rol ? 'selected' : ''}>${AW_ROL_LABELS[r]}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary btn-sm" data-aceptar="${p.id}">Aceptar</button>
+          <button class="btn btn-danger btn-sm" data-rechazar="${p.id}">Rechazar</button>
+        </div>`;
+    } else if (p.estado === 'activo') {
+      acciones = esUnoMismo ? '<span class="hint">Eres tú</span>' : `
+        <div class="row-actions">
+          <select data-cambiar-rol="${p.id}">
+            ${AW_ROLES_DISPONIBLES.map(r => `<option value="${r}" ${r === p.rol ? 'selected' : ''}>${AW_ROL_LABELS[r]}</option>`).join('')}
+          </select>
+          <button class="btn btn-danger btn-sm" data-revocar="${p.id}">Revocar acceso</button>
+        </div>`;
+    } else {
+      acciones = `<button class="btn btn-primary btn-sm" data-reactivar="${p.id}">Reactivar</button>`;
+    }
+
+    return `
+      <tr>
+        <td>${escapeHtml(p.email)}</td>
+        <td>${awFormatDateTime(p.created_at)}</td>
+        <td><span class="badge ${p.estado === 'activo' ? 'pagado' : p.estado === 'rechazado' ? 'pendiente' : 'pendiente'}">${AW_ESTADO_PERFIL_LABELS[p.estado] || p.estado}</span></td>
+        <td>${AW_ROL_LABELS[p.rol] || p.rol}</td>
+        <td>${acciones}</td>
+      </tr>
+    `;
+  }).join('');
+
+  tbody.querySelectorAll('[data-aceptar]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const sel = tbody.querySelector(`[data-nivel-nuevo="${btn.dataset.aceptar}"]`);
+      const ok = await awActualizarPerfil(btn.dataset.aceptar, { estado: 'activo', rol: sel.value });
+      showToast(ok ? 'Usuario aceptado' : 'No se pudo actualizar');
+      await renderUsuarios();
+    });
+  });
+  tbody.querySelectorAll('[data-rechazar]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      confirmAction('¿Rechazar el acceso de este usuario?', async () => {
+        const ok = await awActualizarPerfil(btn.dataset.rechazar, { estado: 'rechazado' });
+        showToast(ok ? 'Usuario rechazado' : 'No se pudo actualizar');
+        await renderUsuarios();
+      });
+    });
+  });
+  tbody.querySelectorAll('[data-revocar]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      confirmAction('¿Revocar el acceso de este usuario? No podrá volver a entrar hasta que lo reactives.', async () => {
+        const ok = await awActualizarPerfil(btn.dataset.revocar, { estado: 'rechazado' });
+        showToast(ok ? 'Acceso revocado' : 'No se pudo actualizar');
+        await renderUsuarios();
+      });
+    });
+  });
+  tbody.querySelectorAll('[data-reactivar]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const ok = await awActualizarPerfil(btn.dataset.reactivar, { estado: 'activo' });
+      showToast(ok ? 'Usuario reactivado' : 'No se pudo actualizar');
+      await renderUsuarios();
+    });
+  });
+  tbody.querySelectorAll('[data-cambiar-rol]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const ok = await awActualizarPerfil(sel.dataset.cambiarRol, { rol: sel.value });
+      showToast(ok ? 'Nivel actualizado' : 'No se pudo actualizar');
+      if (!ok) await renderUsuarios();
+    });
+  });
 }
 
 /* ---------- Helpers ---------- */
