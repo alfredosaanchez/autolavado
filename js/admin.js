@@ -188,7 +188,7 @@ function aplicarRestriccionesPorRol(rol) {
   tasaWidget.style.display = 'flex';
   const inputTasa = document.getElementById('tasaInput');
   const btnTasa = document.getElementById('btnGuardarTasa');
-  const puedeEditarTasa = (rol === 'dueno' || rol === 'cajero');
+  const puedeEditarTasa = (rol === 'dueno' || rol === 'gerente' || rol === 'cajero');
   inputTasa.disabled = !puedeEditarTasa;
   btnTasa.style.display = puedeEditarTasa ? 'inline-flex' : 'none';
 
