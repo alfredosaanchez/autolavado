@@ -191,6 +191,9 @@ function aplicarRestriccionesPorRol(rol) {
   const puedeEditarTasa = (rol === 'dueno' || rol === 'cajero');
   inputTasa.disabled = !puedeEditarTasa;
   btnTasa.style.display = puedeEditarTasa ? 'inline-flex' : 'none';
+
+  // Fecha pasada en Registro: interruptor exclusivo del Dueño.
+  document.getElementById('fechaPasadaWidget').style.display = rol === 'dueno' ? 'flex' : 'none';
 }
 
 let awAdminInicializado = false;
@@ -209,8 +212,25 @@ function initAdminPanel() {
   document.getElementById('form-gasto').addEventListener('submit', onSubmitGasto);
   document.getElementById('btnExportarCsv').addEventListener('click', exportarRegistrosCsv);
   document.getElementById('btnGuardarTasa').addEventListener('click', guardarTasa);
+  document.getElementById('fechaPasadaToggle').addEventListener('change', onToggleFechaPasada);
+  cargarFechaPasadaToggle();
   document.getElementById('gastoFecha').value = new Date().toISOString().slice(0, 10);
   renderAll();
+}
+
+async function cargarFechaPasadaToggle() {
+  const valor = await awGetPermitirFechaPasada();
+  document.getElementById('fechaPasadaToggle').checked = valor;
+}
+
+async function onToggleFechaPasada(e) {
+  const ok = await awSetPermitirFechaPasada(e.target.checked);
+  if (!ok) {
+    e.target.checked = !e.target.checked;
+    showToast('No se pudo actualizar');
+    return;
+  }
+  showToast(e.target.checked ? 'Fecha pasada activada en Registro' : 'Fecha pasada desactivada');
 }
 
 /* ---------- Tasa de cambio ---------- */

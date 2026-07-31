@@ -28,11 +28,12 @@ async function cargarConfiguracion() {
   sel.innerHTML = '<option value="">Cargando…</option>';
   selLav.innerHTML = '<option value="">Cargando…</option>';
 
-  const [servicios, lavadores, bebidasSnacks, tasa] = await Promise.all([
+  const [servicios, lavadores, bebidasSnacks, tasa, permitirFechaPasada] = await Promise.all([
     awGetServicios(),
     awGetLavadores(),
     awGetBebidasSnacks(),
-    awGetTasa()
+    awGetTasa(),
+    awGetPermitirFechaPasada()
   ]);
   awServiciosCache = servicios;
   awLavadoresCache = lavadores;
@@ -42,6 +43,7 @@ async function cargarConfiguracion() {
   bebidasSnacks.forEach(item => { awDrinkCounts[item.id] = 0; });
 
   document.getElementById('tasaDisplay').textContent = awFormatMoney(awTasaCache, 'Bs');
+  document.getElementById('fechaPasadaSection').style.display = permitirFechaPasada ? 'block' : 'none';
 
   sel.innerHTML = servicios.map(s =>
     `<option value="${s.id}">${escapeHtml(s.nombre)}${s.descripcion ? ' — ' + escapeHtml(s.descripcion) : ''}</option>`
@@ -192,9 +194,17 @@ async function onSubmitRegistro(e) {
   const montoFinal = parseFloat(document.getElementById('montoTotal').value) || 0;
   const conv = awConvertir(montoFinal, monedaPago, awTasaCache);
 
+  const fechaPasadaInput = document.getElementById('fechaRegistroPasada');
+  let fechaFinal = new Date().toISOString();
+  if (fechaPasadaInput && fechaPasadaInput.value) {
+    const ahora = new Date();
+    const [anio, mes, dia] = fechaPasadaInput.value.split('-').map(Number);
+    fechaFinal = new Date(anio, mes - 1, dia, ahora.getHours(), ahora.getMinutes(), ahora.getSeconds()).toISOString();
+  }
+
   const registro = {
     id: awUid(),
-    fecha: new Date().toISOString(),
+    fecha: fechaFinal,
     cliente: {
       nombre: document.getElementById('clienteNombre').value.trim(),
       telefono: document.getElementById('clienteTelefono').value.trim()
