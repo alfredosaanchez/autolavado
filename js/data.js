@@ -270,6 +270,58 @@ async function awActualizarPerfil(id, cambios) {
 const AW_ROL_LABELS = { dueno: 'Dueño', gerente: 'Gerente', cajero: 'Cajero' };
 const AW_ESTADO_PERFIL_LABELS = { pendiente: 'Pendiente', activo: 'Activo', rechazado: 'Rechazado' };
 
+/* ---------- Inventario (Periquitos) ---------- */
+async function awGetInventario() {
+  const { data, error } = await awSupabase.from('inventario').select('*').order('created_at');
+  if (error) { console.error(error); return []; }
+  return data.map(row => ({
+    id: row.id, codigo: row.codigo, descripcion: row.descripcion, cantidad: row.cantidad,
+    precioCompraUsd: row.precio_compra_usd, precioVentaUsd: row.precio_venta_usd,
+    precioCompraBs: row.precio_compra_bs, precioVentaBs: row.precio_venta_bs
+  }));
+}
+
+async function awAddInventarioDb(item) {
+  const { error } = await awSupabase.from('inventario').insert({
+    codigo: item.codigo, descripcion: item.descripcion, cantidad: item.cantidad,
+    precio_compra_usd: item.precioCompraUsd, precio_venta_usd: item.precioVentaUsd,
+    precio_compra_bs: item.precioCompraBs, precio_venta_bs: item.precioVentaBs
+  });
+  if (error) console.error(error);
+}
+
+async function awUpdateInventarioDb(id, cambios) {
+  const { error } = await awSupabase.from('inventario').update({
+    codigo: cambios.codigo, descripcion: cambios.descripcion, cantidad: cambios.cantidad,
+    precio_compra_usd: cambios.precioCompraUsd, precio_venta_usd: cambios.precioVentaUsd,
+    precio_compra_bs: cambios.precioCompraBs, precio_venta_bs: cambios.precioVentaBs
+  }).eq('id', id);
+  if (error) console.error(error);
+}
+
+async function awDeleteInventarioDb(id) {
+  const { error } = await awSupabase.from('inventario').delete().eq('id', id);
+  if (error) console.error(error);
+}
+
+/* Descuenta stock al vender (función seguraen el servidor, no requiere login) */
+async function awVenderArticuloInventario(id, cantidad) {
+  const { error } = await awSupabase.rpc('vender_articulo_inventario', { p_id: id, p_cantidad: cantidad });
+  if (error) console.error(error);
+}
+
+/* Texto legible de Periquitos vendidos. Soporta el formato nuevo (array de artículos
+   del inventario) y el formato viejo (texto libre + monto) para tickets antiguos. */
+function awPeriquitosATexto(periquitos) {
+  if (Array.isArray(periquitos)) {
+    return periquitos.filter(p => p.cantidad > 0).map(p => `${p.cantidad}× ${p.codigo} ${p.descripcion}`).join(', ') || 'Ninguno';
+  }
+  if (periquitos && typeof periquitos === 'object' && periquitos.monto > 0) {
+    return `${periquitos.descripcion || 'Periquitos'} — ${awFormatMoney(periquitos.monto, periquitos.moneda)}`;
+  }
+  return 'Ninguno';
+}
+
 /* ---------- Gastos del negocio ---------- */
 async function awGetGastos() {
   const { data, error } = await awSupabase.from('gastos').select('*').order('fecha', { ascending: false });

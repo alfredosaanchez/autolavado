@@ -668,3 +668,27 @@ footer.small-print{
   color: var(--primary-dark);
   margin-top: 3px;
 }
+
+/* Filas de artículos de Periquitos (inventario) */
+.periquito-fila{
+  display:flex;
+  gap:10px;
+  align-items:flex-end;
+  margin-bottom:12px;
+  flex-wrap:wrap;
+  padding:10px;
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+}
+.periquito-fila .field{ margin-bottom:0; flex:1; min-width:160px; }
+.periquito-fila .field.qty{ max-width:100px; flex:none; }
+.periquito-fila .btn-quitar-fila{
+  background: var(--danger-bg);
+  color: var(--danger);
+  border:none;
+  border-radius: 999px;
+  width:34px; height:34px;
+  cursor:pointer;
+  font-size:1rem;
+  flex:none;
+}

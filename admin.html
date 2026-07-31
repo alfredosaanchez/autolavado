@@ -676,6 +676,30 @@ footer.small-print{
   margin-top: 3px;
 }
 
+/* Filas de artículos de Periquitos (inventario) */
+.periquito-fila{
+  display:flex;
+  gap:10px;
+  align-items:flex-end;
+  margin-bottom:12px;
+  flex-wrap:wrap;
+  padding:10px;
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+}
+.periquito-fila .field{ margin-bottom:0; flex:1; min-width:160px; }
+.periquito-fila .field.qty{ max-width:100px; flex:none; }
+.periquito-fila .btn-quitar-fila{
+  background: var(--danger-bg);
+  color: var(--danger);
+  border:none;
+  border-radius: 999px;
+  width:34px; height:34px;
+  cursor:pointer;
+  font-size:1rem;
+  flex:none;
+}
+
 </style>
 </head>
 <body>
@@ -786,6 +810,7 @@ footer.small-print{
       <button class="admin-tab-btn active" data-tab="resumen">📊 Resumen</button>
       <button class="admin-tab-btn" data-tab="registros">🧾 Registros</button>
       <button class="admin-tab-btn" data-tab="gastos">💸 Gastos</button>
+      <button class="admin-tab-btn" data-tab="inventario">📦 Inventario</button>
       <button class="admin-tab-btn" data-tab="servicios">🧼 Servicios</button>
       <button class="admin-tab-btn" data-tab="bebidas">🥤 Bebidas y Snacks</button>
       <button class="admin-tab-btn" data-tab="lavadores">👤 Lavadores</button>
@@ -920,6 +945,22 @@ footer.small-print{
         </div>
       </div>
 
+      <!-- ===== Inventario (Periquitos) ===== -->
+      <div class="admin-panel" id="panel-inventario">
+        <div class="manager-head">
+          <h2>Inventario (Periquitos)</h2>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" id="btnDescargarPlantilla">📄 Descargar plantilla</button>
+            <button class="btn btn-ghost btn-sm" id="btnCargaMasiva">📥 Carga masiva</button>
+            <input type="file" id="inputCargaMasiva" accept=".csv,.xlsx,.xls" style="display:none;">
+            <button class="btn btn-ghost btn-sm" id="btnAddInventario">+ Agregar artículo</button>
+            <button class="btn btn-primary btn-sm" id="btnGuardarInventario">💾 Guardar cambios</button>
+          </div>
+        </div>
+        <div class="hint" id="cargaMasivaResultado" style="margin-bottom:12px;"></div>
+        <div class="manage-list" id="listaInventario"></div>
+      </div>
+
       <!-- ===== Servicios ===== -->
       <div class="admin-panel" id="panel-servicios">
         <div class="manager-head">
@@ -963,7 +1004,7 @@ footer.small-print{
           <div class="section-eyebrow">Niveles</div>
           <p class="hint" style="margin:0;">
             <strong>Dueño:</strong> acceso total, incluyendo gestionar usuarios y la tasa.<br>
-            <strong>Gerente:</strong> ve y edita todo el panel, incluyendo la tasa.<br>
+            <strong>Gerente:</strong> ve y edita todo el panel, menos Usuarios y la tasa (la ve, no la edita).<br>
             <strong>Cajero:</strong> solo ve la pestaña Resumen (sin editar), pero sí puede modificar la tasa.
           </p>
         </div>
@@ -995,9 +1036,10 @@ footer.small-print{
 
 <div class="toast" id="toast"></div>
 
-<footer class="small-print">AutoLavado · ajss2026</footer>
+<footer class="small-print">AutoLavado · datos sincronizados en la nube (Supabase)</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/data.js"></script>
 <script src="js/admin.js"></script>

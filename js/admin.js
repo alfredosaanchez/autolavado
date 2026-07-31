@@ -8,6 +8,7 @@ let awLavadoresCache = [];
 let awBebidasSnacksCache = [];
 let awRegistrosCache = [];
 let awGastosCache = [];
+let awInventarioCache = [];
 let awTasaCache = 1;
 let awNewIdCounter = 0;
 let awPerfilActual = null; // { id, email, rol, estado }
@@ -171,7 +172,7 @@ function aplicarRestriccionesPorRol(rol) {
   document.getElementById('tabBtnUsuarios').style.display = rol === 'dueno' ? 'block' : 'none';
 
   // Cajero: solo ve Resumen. El resto de pestañas se ocultan.
-  const tabsRestringidas = ['gastos', 'servicios', 'bebidas', 'lavadores'];
+  const tabsRestringidas = ['gastos', 'inventario', 'servicios', 'bebidas', 'lavadores'];
   tabsRestringidas.forEach(tab => {
     const btn = document.querySelector(`.admin-tab-btn[data-tab="${tab}"]`);
     if (btn) btn.style.display = (rol === 'cajero') ? 'none' : 'block';
@@ -204,6 +205,11 @@ function initAdminPanel() {
   bindFiltros();
   bindModal();
   document.getElementById('btnAddServicio').addEventListener('click', addServicioLocal);
+  document.getElementById('btnAddInventario').addEventListener('click', addInventarioLocal);
+  document.getElementById('btnGuardarInventario').addEventListener('click', guardarInventario);
+  document.getElementById('btnDescargarPlantilla').addEventListener('click', descargarPlantillaInventario);
+  document.getElementById('btnCargaMasiva').addEventListener('click', () => document.getElementById('inputCargaMasiva').click());
+  document.getElementById('inputCargaMasiva').addEventListener('change', onCargaMasivaInventario);
   document.getElementById('btnGuardarServicios').addEventListener('click', guardarServicios);
   document.getElementById('btnAddBebida').addEventListener('click', addBebidaLocal);
   document.getElementById('btnGuardarBebidas').addEventListener('click', guardarBebidas);
@@ -310,13 +316,14 @@ function awMontosRegistro(r) {
 
 /* renderAll: recarga todo desde la base de datos */
 async function renderAll() {
-  const [servicios, lavadores, bebidas, registros, gastos, tasa] = await Promise.all([
+  const [servicios, lavadores, bebidas, registros, gastos, tasa, inventario] = await Promise.all([
     awGetServicios(),
     awGetLavadores(),
     awGetBebidasSnacks(),
     awGetRegistros(),
     awGetGastos(),
-    awGetTasa()
+    awGetTasa(),
+    awGetInventario()
   ]);
   awServiciosCache = servicios;
   awLavadoresCache = lavadores;
@@ -324,6 +331,7 @@ async function renderAll() {
   awRegistrosCache = registros;
   awGastosCache = gastos;
   awTasaCache = tasa;
+  awInventarioCache = inventario;
   document.getElementById('tasaInput').value = tasa;
 
   poblarFiltroSelects();
@@ -332,6 +340,7 @@ async function renderAll() {
   renderBebidas();
   renderLavadores();
   renderGastos();
+  renderInventario();
   if (awPerfilActual && awPerfilActual.rol === 'dueno') await renderUsuarios();
 }
 
@@ -438,7 +447,7 @@ function renderTablaRegistros(registros) {
 
   tbody.innerHTML = registros.map(r => {
     const bebidasTxt = awBebidasATexto(r.bebidas);
-    const periquitosTxt = r.periquitos && r.periquitos.monto > 0 ? awFormatMoney(r.periquitos.monto, r.periquitos.moneda) : '—';
+    const periquitosTxt = awPeriquitosATexto(r.periquitos);
     const comision = r.pago.monto * (r.porcentajeLavador / 100);
     const propinaTxt = r.propina.monto > 0 ? awFormatMoney(r.propina.monto, r.propina.moneda) : '—';
     const accionPendiente = r.estado === 'PENDIENTE'
@@ -452,7 +461,7 @@ function renderTablaRegistros(registros) {
         <td>${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</td>
         <td>${escapeHtml(r.servicio.nombre)}</td>
         <td>${escapeHtml(bebidasTxt)}</td>
-        <td>${periquitosTxt}</td>
+        <td>${escapeHtml(periquitosTxt)}</td>
         <td>${awPaymentLabel(r.pago.metodo)}</td>
         <td>${r.pago.referencia ? escapeHtml(r.pago.referencia) : '—'}</td>
         <td>${awFormatMoney(r.pago.monto, r.pago.moneda)}</td>
@@ -499,7 +508,7 @@ function exportarRegistrosCsv() {
     return [
       awFormatDateTime(r.fecha), r.cliente.nombre, r.cliente.telefono, r.carro.modelo, r.carro.color,
       r.servicio.nombre, awBebidasATexto(r.bebidas),
-      r.periquitos && r.periquitos.monto > 0 ? `${r.periquitos.descripcion} ${r.periquitos.monto}` : '',
+      awPeriquitosATexto(r.periquitos),
       awPaymentLabel(r.pago.metodo), r.pago.referencia || '', r.pago.monto, r.pago.moneda,
       montos.bs.toFixed(2), montos.usd.toFixed(2),
       r.lavador.nombre, r.porcentajeLavador, comision.toFixed(2), r.propina.monto, r.estado
@@ -648,6 +657,197 @@ async function deleteServicio(id) {
   awServiciosCache = awServiciosCache.filter(s => s.id !== id);
   renderServicios();
   showToast('Servicio eliminado');
+}
+
+/* ---------- Inventario (Periquitos): guardado en lote, Bs auto por tasa ---------- */
+function renderInventario() {
+  const cont = document.getElementById('listaInventario');
+  if (!cont) return;
+  if (awInventarioCache.length === 0) {
+    cont.innerHTML = `<div class="empty-state">No hay artículos en el inventario todavía.</div>`;
+    return;
+  }
+  cont.innerHTML = awInventarioCache.map(item => {
+    const stockBajo = item.cantidad <= 3;
+    return `
+    <div class="manage-item" data-inv-id="${item.id}">
+      <div class="mi-fields">
+        <div class="field" style="max-width:110px;"><label>Código</label><input type="text" value="${escapeAttr(item.codigo)}" data-field="codigo"></div>
+        <div class="field"><label>Descripción</label><input type="text" value="${escapeAttr(item.descripcion)}" data-field="descripcion"></div>
+        <div class="field" style="max-width:90px;">
+          <label>Cantidad${stockBajo ? ' ⚠️' : ''}</label>
+          <input type="number" step="1" min="0" value="${item.cantidad}" data-field="cantidad" style="${stockBajo ? 'border-color:var(--danger); color:var(--danger); font-weight:700;' : ''}">
+        </div>
+        <div class="field"><label>Compra $</label><input type="number" step="0.01" min="0" value="${item.precioCompraUsd}" data-field="precioCompraUsd"></div>
+        <div class="field"><label>Compra Bs (auto)</label><input type="number" step="0.01" value="${(item.precioCompraUsd * awTasaCache).toFixed(2)}" data-field-compra-bs readonly style="background:var(--bg-soft); color:var(--ink-soft);"></div>
+        <div class="field"><label>Venta $</label><input type="number" step="0.01" min="0" value="${item.precioVentaUsd}" data-field="precioVentaUsd"></div>
+        <div class="field"><label>Venta Bs (auto)</label><input type="number" step="0.01" value="${(item.precioVentaUsd * awTasaCache).toFixed(2)}" data-field-venta-bs readonly style="background:var(--bg-soft); color:var(--ink-soft);"></div>
+      </div>
+      <div class="row-actions">
+        <button class="btn btn-danger btn-sm" data-del-inv="${item.id}">Eliminar</button>
+      </div>
+    </div>
+  `;
+  }).join('');
+
+  cont.querySelectorAll('[data-field="precioCompraUsd"]').forEach(input => {
+    input.addEventListener('input', () => {
+      const bsInput = input.closest('.manage-item').querySelector('[data-field-compra-bs]');
+      bsInput.value = ((parseFloat(input.value) || 0) * awTasaCache).toFixed(2);
+    });
+  });
+  cont.querySelectorAll('[data-field="precioVentaUsd"]').forEach(input => {
+    input.addEventListener('input', () => {
+      const bsInput = input.closest('.manage-item').querySelector('[data-field-venta-bs]');
+      bsInput.value = ((parseFloat(input.value) || 0) * awTasaCache).toFixed(2);
+    });
+  });
+
+  cont.querySelectorAll('[data-del-inv]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      confirmAction('¿Eliminar este artículo del inventario? Los registros ya guardados no se verán afectados.', () => deleteInventarioItem(btn.dataset.delInv));
+    });
+  });
+}
+
+function addInventarioLocal() {
+  awInventarioCache.push({ id: awTempId(), codigo: '', descripcion: 'Artículo nuevo', cantidad: 0, precioCompraUsd: 0, precioVentaUsd: 0, precioCompraBs: 0, precioVentaBs: 0, _nuevo: true });
+  renderInventario();
+}
+
+async function guardarInventario() {
+  const btn = document.getElementById('btnGuardarInventario');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+  for (const item of awInventarioCache) {
+    const el = document.querySelector(`[data-inv-id="${item.id}"]`);
+    if (!el) continue;
+    const precioCompraUsd = parseFloat(el.querySelector('[data-field="precioCompraUsd"]').value) || 0;
+    const precioVentaUsd = parseFloat(el.querySelector('[data-field="precioVentaUsd"]').value) || 0;
+    const cambios = {
+      codigo: el.querySelector('[data-field="codigo"]').value.trim(),
+      descripcion: el.querySelector('[data-field="descripcion"]').value.trim() || 'Artículo',
+      cantidad: parseInt(el.querySelector('[data-field="cantidad"]').value, 10) || 0,
+      precioCompraUsd, precioVentaUsd,
+      precioCompraBs: precioCompraUsd * awTasaCache,
+      precioVentaBs: precioVentaUsd * awTasaCache
+    };
+    if (item._nuevo) await awAddInventarioDb(cambios);
+    else await awUpdateInventarioDb(item.id, cambios);
+  }
+  btn.disabled = false;
+  btn.textContent = '💾 Guardar cambios';
+  showToast('Inventario guardado');
+  await renderAll();
+}
+
+async function deleteInventarioItem(id) {
+  if (!String(id).startsWith('new-')) await awDeleteInventarioDb(id);
+  awInventarioCache = awInventarioCache.filter(i => i.id !== id);
+  renderInventario();
+  showToast('Artículo eliminado');
+}
+
+/* ---------- Carga masiva de Inventario (Excel/CSV) ---------- */
+function descargarPlantillaInventario() {
+  const headers = ['CODIGO', 'DESCRIPCION', 'CANTIDAD', 'PRECIO_COMPRA', 'PRECIO_VENTA'];
+  const ejemplo = ['PER-001', 'Llavero de peluche', '10', '1.50', '3.00'];
+  const csv = [headers, ejemplo].map(fila => fila.join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'plantilla_inventario.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Plantilla descargada. Precios en $ (el Bs se calcula solo).');
+}
+
+async function onCargaMasivaInventario(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const resultadoEl = document.getElementById('cargaMasivaResultado');
+  resultadoEl.textContent = 'Leyendo archivo…';
+
+  try {
+    const filas = await leerArchivoInventario(file);
+    if (filas.length === 0) {
+      resultadoEl.textContent = 'El archivo no tiene filas válidas para importar.';
+      e.target.value = '';
+      return;
+    }
+
+    let actualizados = 0;
+    let creados = 0;
+    for (const fila of filas) {
+      const existente = awInventarioCache.find(i => (i.codigo || '').trim().toLowerCase() === fila.codigo.trim().toLowerCase());
+      if (existente) {
+        await awUpdateInventarioDb(existente.id, {
+          codigo: existente.codigo,
+          descripcion: fila.descripcion || existente.descripcion,
+          cantidad: existente.cantidad + fila.cantidad,
+          precioCompraUsd: fila.precioCompra,
+          precioVentaUsd: fila.precioVenta,
+          precioCompraBs: fila.precioCompra * awTasaCache,
+          precioVentaBs: fila.precioVenta * awTasaCache
+        });
+        actualizados++;
+      } else {
+        await awAddInventarioDb({
+          codigo: fila.codigo, descripcion: fila.descripcion, cantidad: fila.cantidad,
+          precioCompraUsd: fila.precioCompra, precioVentaUsd: fila.precioVenta,
+          precioCompraBs: fila.precioCompra * awTasaCache, precioVentaBs: fila.precioVenta * awTasaCache
+        });
+        creados++;
+      }
+    }
+    resultadoEl.textContent = `Listo: ${creados} artículo(s) nuevo(s), ${actualizados} actualizado(s).`;
+    showToast('Carga masiva completada');
+    await renderAll();
+  } catch (err) {
+    console.error(err);
+    resultadoEl.textContent = 'No se pudo leer el archivo. Verifica que uses la plantilla (CODIGO, DESCRIPCION, CANTIDAD, PRECIO_COMPRA, PRECIO_VENTA).';
+  }
+  e.target.value = '';
+}
+
+function leerArchivoInventario(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = new Uint8Array(ev.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const primeraHoja = workbook.Sheets[workbook.SheetNames[0]];
+        const filasCrudas = XLSX.utils.sheet_to_json(primeraHoja, { defval: '' });
+
+        const filas = filasCrudas.map(row => {
+          const get = (nombres) => {
+            for (const n of nombres) {
+              const key = Object.keys(row).find(k => k.trim().toUpperCase() === n);
+              if (key !== undefined) return row[key];
+            }
+            return '';
+          };
+          return {
+            codigo: String(get(['CODIGO', 'CÓDIGO'])).trim(),
+            descripcion: String(get(['DESCRIPCION', 'DESCRIPCIÓN'])).trim(),
+            cantidad: parseInt(get(['CANTIDAD']), 10) || 0,
+            precioCompra: parseFloat(get(['PRECIO_COMPRA', 'PRECIO COMPRA'])) || 0,
+            precioVenta: parseFloat(get(['PRECIO_VENTA', 'PRECIO VENTA'])) || 0
+          };
+        }).filter(f => f.codigo);
+
+        resolve(filas);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 /* ---------- Bebidas y Snacks (guardado en lote, con emoji, Bs auto por tasa) ---------- */

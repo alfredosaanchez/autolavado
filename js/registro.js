@@ -6,8 +6,10 @@ let awDrinkCounts = {}; // { itemId: cantidad }
 let awServiciosCache = [];
 let awLavadoresCache = [];
 let awBebidasSnacksCache = [];
+let awInventarioCache = [];
 let awTasaCache = 1;
 let awTicketsHoyCache = [];
+let awPeriquitoRowCounter = 0;
 
 document.addEventListener('DOMContentLoaded', async () => {
   bindMetodoPago();
@@ -15,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('montoTotal').addEventListener('input', (e) => {
     e.target.dataset.touched = '1';
   });
+  document.getElementById('btnAddPeriquito').addEventListener('click', addPeriquitoFila);
   document.getElementById('form-registro').addEventListener('submit', onSubmitRegistro);
   document.getElementById('buscadorTickets').addEventListener('input', renderTicketsFiltrados);
   await cargarConfiguracion();
@@ -28,22 +31,25 @@ async function cargarConfiguracion() {
   sel.innerHTML = '<option value="">Cargando…</option>';
   selLav.innerHTML = '<option value="">Cargando…</option>';
 
-  const [servicios, lavadores, bebidasSnacks, tasa, permitirFechaPasada] = await Promise.all([
+  const [servicios, lavadores, bebidasSnacks, tasa, permitirFechaPasada, inventario] = await Promise.all([
     awGetServicios(),
     awGetLavadores(),
     awGetBebidasSnacks(),
     awGetTasa(),
-    awGetPermitirFechaPasada()
+    awGetPermitirFechaPasada(),
+    awGetInventario()
   ]);
   awServiciosCache = servicios;
   awLavadoresCache = lavadores;
   awBebidasSnacksCache = bebidasSnacks;
   awTasaCache = tasa;
+  awInventarioCache = inventario;
   awDrinkCounts = {};
   bebidasSnacks.forEach(item => { awDrinkCounts[item.id] = 0; });
 
   document.getElementById('tasaDisplay').textContent = awFormatMoney(awTasaCache, 'Bs');
   document.getElementById('fechaPasadaSection').style.display = permitirFechaPasada ? 'block' : 'none';
+  document.getElementById('periquitosFilas').innerHTML = '';
 
   sel.innerHTML = servicios.map(s =>
     `<option value="${s.id}">${escapeHtml(s.nombre)}${s.descripcion ? ' — ' + escapeHtml(s.descripcion) : ''}</option>`
@@ -79,9 +85,73 @@ function renderDrinkGrid() {
 function bindServicioChange() {
   document.getElementById('servicioSelect').addEventListener('change', actualizarHintPrecio);
   document.getElementById('monedaPago').addEventListener('change', actualizarHintPrecio);
-  document.getElementById('periquitosMonto').addEventListener('input', actualizarHintPrecio);
-  document.getElementById('periquitosMoneda').addEventListener('change', actualizarHintPrecio);
-  document.getElementById('periquitosDesc').addEventListener('input', actualizarHintPrecio);
+}
+
+/* ---------- Periquitos (artículos de inventario) ---------- */
+function addPeriquitoFila() {
+  const id = `pq-${++awPeriquitoRowCounter}`;
+  const cont = document.getElementById('periquitosFilas');
+  const div = document.createElement('div');
+  div.className = 'periquito-fila';
+  div.dataset.filaId = id;
+  const opcionesArticulo = awInventarioCache.map(it =>
+    `<option value="${it.id}" ${it.cantidad <= 0 ? 'disabled' : ''}>${escapeHtml(it.codigo)} — ${escapeHtml(it.descripcion)} (${awFormatMoney(it.precioVentaUsd, 'USD')})${it.cantidad <= 0 ? ' — sin stock' : ''}</option>`
+  ).join('');
+  div.innerHTML = `
+    <div class="field">
+      <label>Artículo</label>
+      <select class="periquito-articulo">
+        <option value="">Selecciona…</option>
+        ${opcionesArticulo}
+      </select>
+    </div>
+    <div class="field qty">
+      <label>Cantidad</label>
+      <select class="periquito-cantidad"><option value="1">1</option></select>
+    </div>
+    <button type="button" class="btn-quitar-fila" title="Quitar">×</button>
+  `;
+  cont.appendChild(div);
+
+  const selArticulo = div.querySelector('.periquito-articulo');
+  const selCantidad = div.querySelector('.periquito-cantidad');
+  selArticulo.addEventListener('change', () => {
+    actualizarOpcionesCantidad(selArticulo, selCantidad);
+    actualizarHintPrecio();
+  });
+  selCantidad.addEventListener('change', actualizarHintPrecio);
+  div.querySelector('.btn-quitar-fila').addEventListener('click', () => {
+    div.remove();
+    actualizarHintPrecio();
+  });
+
+  if (awInventarioCache.length === 0) {
+    selArticulo.innerHTML = '<option value="">No hay artículos en el inventario</option>';
+  }
+}
+
+function actualizarOpcionesCantidad(selArticulo, selCantidad) {
+  const item = awInventarioCache.find(i => i.id === selArticulo.value);
+  const max = item ? Math.max(Math.min(item.cantidad, 20), 1) : 1;
+  const actual = parseInt(selCantidad.value, 10) || 1;
+  selCantidad.innerHTML = Array.from({ length: max }, (_, i) => i + 1)
+    .map(n => `<option value="${n}" ${n === actual ? 'selected' : ''}>${n}</option>`).join('');
+}
+
+function leerFilasPeriquitos() {
+  const filas = [];
+  document.querySelectorAll('#periquitosFilas .periquito-fila').forEach(div => {
+    const itemId = div.querySelector('.periquito-articulo').value;
+    const cantidad = parseInt(div.querySelector('.periquito-cantidad').value, 10) || 0;
+    const item = awInventarioCache.find(i => i.id === itemId);
+    if (item && cantidad > 0) {
+      filas.push({
+        id: item.id, codigo: item.codigo, descripcion: item.descripcion, cantidad,
+        precioVentaUsd: item.precioVentaUsd, precioVentaBs: item.precioVentaUsd * awTasaCache
+      });
+    }
+  });
+  return filas;
 }
 
 /* ---------- Resumen de cobro (usa la tasa para que TODO cuadre en ambas monedas) ---------- */
@@ -96,12 +166,12 @@ function actualizarHintPrecio() {
   const bebidasBs = awCalcularCostoBebidas(awDrinkCounts, 'Bs', awBebidasSnacksCache, tasa);
   const bebidasUsd = awCalcularCostoBebidas(awDrinkCounts, 'USD', awBebidasSnacksCache, tasa);
 
-  const periquitosMonto = parseFloat(document.getElementById('periquitosMonto').value) || 0;
-  const periquitosMoneda = document.getElementById('periquitosMoneda').value;
-  const periquitosConv = awConvertir(periquitosMonto, periquitosMoneda, tasa);
+  const periquitosFilas = leerFilasPeriquitos();
+  const periquitosBs = periquitosFilas.reduce((s, f) => s + f.cantidad * f.precioVentaBs, 0);
+  const periquitosUsd = periquitosFilas.reduce((s, f) => s + f.cantidad * f.precioVentaUsd, 0);
 
-  const totalBs = precioServicioBs + bebidasBs + periquitosConv.bs;
-  const totalUsd = precioServicioUsd + bebidasUsd + periquitosConv.usd;
+  const totalBs = precioServicioBs + bebidasBs + periquitosBs;
+  const totalUsd = precioServicioUsd + bebidasUsd + periquitosUsd;
 
   document.getElementById('resumenServicioTxt').textContent = s
     ? `${s.nombre} — ${awFormatMoney(precioServicioBs, 'Bs')} / ${awFormatMoney(precioServicioUsd, 'USD')}`
@@ -121,9 +191,9 @@ function actualizarHintPrecio() {
   }
 
   const periquitosLinea = document.getElementById('resumenPeriquitosLinea');
-  if (periquitosMonto > 0) {
-    const desc = document.getElementById('periquitosDesc').value.trim();
-    document.getElementById('resumenPeriquitosTxt').textContent = `${desc ? desc + ' — ' : ''}${awFormatMoney(periquitosConv.bs, 'Bs')} / ${awFormatMoney(periquitosConv.usd, 'USD')}`;
+  if (periquitosFilas.length > 0) {
+    const detalle = periquitosFilas.map(f => `${f.cantidad}× ${f.codigo}`).join(', ');
+    document.getElementById('resumenPeriquitosTxt').textContent = `${detalle} — ${awFormatMoney(periquitosBs, 'Bs')} / ${awFormatMoney(periquitosUsd, 'USD')}`;
     periquitosLinea.style.display = 'flex';
   } else {
     periquitosLinea.style.display = 'none';
@@ -224,11 +294,7 @@ async function onSubmitRegistro(e) {
         precioBs: awPrecioBsEfectivo(item, awTasaCache),
         precioUsd: item.precioUsd
       })),
-    periquitos: {
-      descripcion: document.getElementById('periquitosDesc').value.trim(),
-      monto: parseFloat(document.getElementById('periquitosMonto').value) || 0,
-      moneda: document.getElementById('periquitosMoneda').value
-    },
+    periquitos: leerFilasPeriquitos(),
     pago: {
       metodo: metodo,
       moneda: monedaPago,
@@ -256,6 +322,9 @@ async function onSubmitRegistro(e) {
     showToast('No se pudo guardar. Revisa tu conexión e inténtalo de nuevo.');
     return;
   }
+  for (const f of registro.periquitos) {
+    await awVenderArticuloInventario(f.id, f.cantidad);
+  }
   showToast(metodo === 'pendiente' ? 'Registrado como PENDIENTE' : 'Lavado registrado correctamente');
   resetForm();
   await renderTickets();
@@ -265,9 +334,11 @@ function resetForm() {
   document.getElementById('form-registro').reset();
   awBebidasSnacksCache.forEach(item => { awDrinkCounts[item.id] = 0; });
   document.querySelectorAll('#drinkGrid .stepper span').forEach(span => { span.textContent = '0'; });
+  document.getElementById('periquitosFilas').innerHTML = '';
   document.getElementById('montoTotal').dataset.touched = '';
   updateReferenciaVisibility();
   actualizarHintPrecio();
+  awGetInventario().then(inv => { awInventarioCache = inv; });
 }
 
 /* ---------- Render de tickets del día ---------- */
@@ -325,9 +396,7 @@ function renderTicket(r) {
     ? awFormatMoney(r.propina.monto, r.propina.moneda) + (r.propina.referencia ? ` (Ref: ${escapeHtml(r.propina.referencia)})` : '')
     : '—';
 
-  const periquitosTxt = r.periquitos && r.periquitos.monto > 0
-    ? `${r.periquitos.descripcion ? escapeHtml(r.periquitos.descripcion) + ' — ' : ''}${awFormatMoney(r.periquitos.monto, r.periquitos.moneda)}`
-    : '—';
+  const periquitosTxt = escapeHtml(awPeriquitosATexto(r.periquitos));
 
   const pendienteBlock = r.estado === 'PENDIENTE' ? `
     <div class="ticket-actions">
@@ -419,7 +488,7 @@ function imprimirTicket(id) {
   if (!r) return;
   const bebidasTxt = awBebidasATexto(r.bebidas);
   const propinaTxt = r.propina.monto > 0 ? awFormatMoney(r.propina.monto, r.propina.moneda) : '—';
-  const periquitosTxt = r.periquitos && r.periquitos.monto > 0 ? `${r.periquitos.descripcion || 'Periquitos'} — ${awFormatMoney(r.periquitos.monto, r.periquitos.moneda)}` : '—';
+  const periquitosTxt = awPeriquitosATexto(r.periquitos);
 
   const html = `
     <html><head><meta charset="UTF-8"><title>Ticket - ${escapeHtml(r.cliente.nombre)}</title>
