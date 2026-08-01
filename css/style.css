@@ -693,3 +693,38 @@ footer.small-print{
   font-size:1rem;
   flex:none;
 }
+
+/* Buscador de artículos (Periquitos) con sugerencias */
+.periquito-sugerencias{
+  display:none;
+  position:absolute;
+  top: calc(100% + 4px);
+  left:0;
+  right:0;
+  z-index: 30;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  max-height: 260px;
+  overflow-y:auto;
+}
+.periquito-sugerencia{
+  padding: 9px 12px;
+  cursor:pointer;
+  font-size: .82rem;
+  color: var(--ink);
+  border-bottom: 1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.periquito-sugerencia:last-child{ border-bottom:none; }
+.periquito-sugerencia:hover{ background: rgba(232,169,59,0.12); }
+.periquito-sugerencia span{ color: var(--ink-soft); font-size: .74rem; }
+.periquito-sugerencia-vacia{
+  padding: 12px;
+  text-align:center;
+  color: var(--ink-soft);
+  font-size: .82rem;
+}

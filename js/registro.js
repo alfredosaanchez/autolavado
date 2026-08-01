@@ -94,54 +94,93 @@ function addPeriquitoFila() {
   const div = document.createElement('div');
   div.className = 'periquito-fila';
   div.dataset.filaId = id;
-  const opcionesArticulo = awInventarioCache.map(it =>
-    `<option value="${it.id}" ${it.cantidad <= 0 ? 'disabled' : ''}>${escapeHtml(it.codigo)} — ${escapeHtml(it.descripcion)} (${awFormatMoney(it.precioVentaUsd, 'USD')})${it.cantidad <= 0 ? ' — sin stock' : ''}</option>`
-  ).join('');
   div.innerHTML = `
-    <div class="field">
-      <label>Artículo</label>
-      <select class="periquito-articulo">
-        <option value="">Selecciona…</option>
-        ${opcionesArticulo}
-      </select>
+    <div class="field" style="position:relative;">
+      <label>Artículo (busca por nombre o código)</label>
+      <input type="text" class="periquito-buscar" data-selected-id="" placeholder="Ej: llavero, PER-001…" autocomplete="off">
+      <div class="periquito-sugerencias"></div>
     </div>
     <div class="field qty">
       <label>Cantidad</label>
-      <select class="periquito-cantidad"><option value="1">1</option></select>
+      <select class="periquito-cantidad" disabled><option value="1">1</option></select>
     </div>
     <button type="button" class="btn-quitar-fila" title="Quitar">×</button>
   `;
   cont.appendChild(div);
 
-  const selArticulo = div.querySelector('.periquito-articulo');
+  const inputBuscar = div.querySelector('.periquito-buscar');
+  const sugerenciasBox = div.querySelector('.periquito-sugerencias');
   const selCantidad = div.querySelector('.periquito-cantidad');
-  selArticulo.addEventListener('change', () => {
-    actualizarOpcionesCantidad(selArticulo, selCantidad);
-    actualizarHintPrecio();
+
+  if (awInventarioCache.length === 0) {
+    inputBuscar.placeholder = 'No hay artículos en el inventario';
+    inputBuscar.disabled = true;
+  }
+
+  inputBuscar.addEventListener('input', () => {
+    inputBuscar.dataset.selectedId = '';
+    selCantidad.disabled = true;
+    renderSugerenciasPeriquito(inputBuscar, sugerenciasBox, selCantidad);
   });
+  inputBuscar.addEventListener('focus', () => renderSugerenciasPeriquito(inputBuscar, sugerenciasBox, selCantidad));
+  document.addEventListener('click', (e) => {
+    if (!div.contains(e.target)) sugerenciasBox.style.display = 'none';
+  });
+
   selCantidad.addEventListener('change', actualizarHintPrecio);
   div.querySelector('.btn-quitar-fila').addEventListener('click', () => {
     div.remove();
     actualizarHintPrecio();
   });
-
-  if (awInventarioCache.length === 0) {
-    selArticulo.innerHTML = '<option value="">No hay artículos en el inventario</option>';
-  }
 }
 
-function actualizarOpcionesCantidad(selArticulo, selCantidad) {
-  const item = awInventarioCache.find(i => i.id === selArticulo.value);
-  const max = item ? Math.max(Math.min(item.cantidad, 20), 1) : 1;
+function renderSugerenciasPeriquito(inputBuscar, sugerenciasBox, selCantidad) {
+  const q = inputBuscar.value.trim().toLowerCase();
+  const disponibles = awInventarioCache.filter(it => it.cantidad > 0);
+  const coincidencias = q
+    ? disponibles.filter(it => it.codigo.toLowerCase().includes(q) || it.descripcion.toLowerCase().includes(q))
+    : disponibles;
+
+  if (coincidencias.length === 0) {
+    sugerenciasBox.innerHTML = `<div class="periquito-sugerencia-vacia">Sin resultados</div>`;
+    sugerenciasBox.style.display = 'block';
+    return;
+  }
+
+  sugerenciasBox.innerHTML = coincidencias.slice(0, 8).map(it => `
+    <div class="periquito-sugerencia" data-id="${it.id}">
+      <strong>${escapeHtml(it.codigo)}</strong> — ${escapeHtml(it.descripcion)}
+      <span>${awFormatMoney(it.precioVentaUsd, 'USD')} · stock: ${it.cantidad}</span>
+    </div>
+  `).join('');
+  sugerenciasBox.style.display = 'block';
+
+  sugerenciasBox.querySelectorAll('.periquito-sugerencia').forEach(el => {
+    el.addEventListener('click', () => {
+      const item = awInventarioCache.find(i => i.id === el.dataset.id);
+      if (!item) return;
+      inputBuscar.value = `${item.codigo} — ${item.descripcion}`;
+      inputBuscar.dataset.selectedId = item.id;
+      sugerenciasBox.style.display = 'none';
+      selCantidad.disabled = false;
+      actualizarOpcionesCantidadPorItem(item, selCantidad);
+      actualizarHintPrecio();
+    });
+  });
+}
+
+function actualizarOpcionesCantidadPorItem(item, selCantidad) {
+  const max = Math.max(Math.min(item.cantidad, 20), 1);
   const actual = parseInt(selCantidad.value, 10) || 1;
   selCantidad.innerHTML = Array.from({ length: max }, (_, i) => i + 1)
     .map(n => `<option value="${n}" ${n === actual ? 'selected' : ''}>${n}</option>`).join('');
 }
 
+
 function leerFilasPeriquitos() {
   const filas = [];
   document.querySelectorAll('#periquitosFilas .periquito-fila').forEach(div => {
-    const itemId = div.querySelector('.periquito-articulo').value;
+    const itemId = div.querySelector('.periquito-buscar').dataset.selectedId;
     const cantidad = parseInt(div.querySelector('.periquito-cantidad').value, 10) || 0;
     const item = awInventarioCache.find(i => i.id === itemId);
     if (item && cantidad > 0) {
