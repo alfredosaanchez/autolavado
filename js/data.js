@@ -352,6 +352,6 @@ function awNormalizarTelefonoVE(telefono) {
 
 function awWhatsAppLink(telefono, nombre, carroModelo) {
   const numero = awNormalizarTelefonoVE(telefono);
-  const mensaje = `Hola, buenas Sr(a) ${nombre}, un gusto saludarle desde el AUTOLAVADO, su vehículo ${carroModelo} ya está listo para que venga a retirarlo.`;
+  const mensaje = `Hola, buenas Sr(a) ${nombre}, un gusto saludarle desde Venta Falcon Auto Motor, su vehículo ${carroModelo} ya está listo para que venga a retirarlo.`;
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
 }

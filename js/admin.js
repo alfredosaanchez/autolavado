@@ -492,7 +492,7 @@ function renderTablaRegistros(registros) {
 
 function awWhatsAppLinkPendiente(r) {
   const numero = awNormalizarTelefonoVE(r.cliente.telefono);
-  const mensaje = `Hola, buenas Sr(a) ${r.cliente.nombre}, le escribimos de AUTOLAVADO para recordarle que el servicio de su vehículo ${r.carro.modelo} quedó con un saldo pendiente de ${awFormatMoney(r.pago.monto, r.pago.moneda)}. Quedamos atentos para coordinar el pago, ¡gracias por su preferencia!`;
+  const mensaje = `Hola, buenas Sr(a) ${r.cliente.nombre}, le escribimos de Venta Falcon Auto Motor para recordarle que el servicio de su vehículo ${r.carro.modelo} quedó con un saldo pendiente de ${awFormatMoney(r.pago.monto, r.pago.moneda)}. Quedamos atentos para coordinar el pago, ¡gracias por su preferencia!`;
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
 }
 

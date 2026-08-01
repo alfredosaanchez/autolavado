@@ -505,7 +505,7 @@ function imprimirTicket(id) {
       .footer{ text-align:center; font-size:.7rem; margin-top:16px; color:#555; }
     </style>
     </head><body>
-      <h1>AUTOLAVADO</h1>
+      <h1>VENTA FALCON AUTO MOTOR</h1>
       <div class="sub">${awFormatDateTime(r.fecha)}</div>
       <hr>
       <table>
