@@ -12,10 +12,27 @@ let awInventarioCache = [];
 let awTasaCache = 1;
 let awNewIdCounter = 0;
 let awPerfilActual = null; // { id, email, rol, estado }
+let awSucursalesCache = [];
+let awSucursalActivaAdmin = 'todas';
 
 function awTempId() { return `new-${++awNewIdCounter}`; }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  const licencia = await awVerificarLicencia();
+  if (licencia.bloqueado) {
+    document.getElementById('licenciaMensajeTxt').textContent = licencia.mensaje;
+    document.getElementById('licenciaBloqueo').style.display = 'flex';
+    return;
+  }
+  if (licencia.aviso) {
+    const dias = licencia.diasRestantes;
+    const banner = document.getElementById('licenciaAviso');
+    banner.textContent = dias <= 0
+      ? '⚠️ El sistema se desactivará hoy si no se renueva.'
+      : `⚠️ Quedan ${dias} día${dias === 1 ? '' : 's'} para que el sistema se desactive.`;
+    banner.style.display = 'block';
+  }
+
   bindLoginForm();
   bindRegistroForm();
   bindModeSwitchLinks();
@@ -198,7 +215,7 @@ function aplicarRestriccionesPorRol(rol) {
 }
 
 let awAdminInicializado = false;
-function initAdminPanel() {
+async function initAdminPanel() {
   if (awAdminInicializado) { renderAll(); return; }
   awAdminInicializado = true;
   bindTabs();
@@ -221,7 +238,38 @@ function initAdminPanel() {
   document.getElementById('fechaPasadaToggle').addEventListener('change', onToggleFechaPasada);
   cargarFechaPasadaToggle();
   document.getElementById('gastoFecha').value = new Date().toISOString().slice(0, 10);
+  await configurarSucursalAdmin();
   renderAll();
+}
+
+/* ---------- Selector de sucursal (Dueño/Gerente: I / II / Todas — Cajero: fija) ---------- */
+async function configurarSucursalAdmin() {
+  awSucursalesCache = await awGetSucursales();
+  const widget = document.getElementById('sucursalWidgetAdmin');
+  const sel = document.getElementById('sucursalSelectAdmin');
+  widget.style.display = 'flex';
+
+  if (awPerfilActual.rol === 'cajero') {
+    const suc = awSucursalesCache.find(s => s.id === awPerfilActual.sucursal_id);
+    sel.innerHTML = `<option value="${awPerfilActual.sucursal_id || ''}">${suc ? escapeHtml(suc.nombre) : 'Sin asignar'}</option>`;
+    sel.disabled = true;
+    awSucursalActivaAdmin = awPerfilActual.sucursal_id || 'todas';
+    return;
+  }
+
+  sel.disabled = false;
+  sel.innerHTML = awSucursalesCache.map(s => `<option value="${s.id}">${escapeHtml(s.nombre)}</option>`).join('')
+    + '<option value="todas">Todas</option>';
+  const guardada = localStorage.getItem('aw_sucursal_activa_admin');
+  const valida = guardada && (guardada === 'todas' || awSucursalesCache.some(s => s.id === guardada));
+  awSucursalActivaAdmin = valida ? guardada : 'todas';
+  sel.value = awSucursalActivaAdmin;
+
+  sel.addEventListener('change', () => {
+    awSucursalActivaAdmin = sel.value;
+    localStorage.setItem('aw_sucursal_activa_admin', awSucursalActivaAdmin);
+    renderAll();
+  });
 }
 
 async function cargarFechaPasadaToggle() {
@@ -278,10 +326,12 @@ function bindFiltros() {
   ['filtroDesde', 'filtroHasta', 'filtroEstado', 'filtroLavador', 'filtroServicio'].forEach(id => {
     document.getElementById(id).addEventListener('change', renderFromCache);
   });
+  document.getElementById('buscadorRegistrosAdmin').addEventListener('input', renderFromCache);
   document.getElementById('btnLimpiarFiltros').addEventListener('click', () => {
     ['filtroDesde', 'filtroHasta', 'filtroEstado', 'filtroLavador', 'filtroServicio'].forEach(id => {
       document.getElementById(id).value = '';
     });
+    document.getElementById('buscadorRegistrosAdmin').value = '';
     renderFromCache();
   });
 }
@@ -348,7 +398,20 @@ async function renderAll() {
 function renderFromCache() {
   const filtrados = getFiltered();
   renderResumen(filtrados);
-  renderTablaRegistros(filtrados);
+  renderTablaRegistros(aplicarBusquedaRegistros(filtrados));
+}
+
+function aplicarBusquedaRegistros(registros) {
+  const q = document.getElementById('buscadorRegistrosAdmin').value.trim().toLowerCase();
+  if (!q) return registros;
+  return registros.filter(r => {
+    const campos = [
+      r.cliente.nombre, r.cliente.telefono, r.carro.modelo, r.carro.color,
+      r.servicio.nombre, r.lavador.nombre, r.pago.referencia, r.pago.metodo,
+      r.estado, r.observaciones, awBebidasATexto(r.bebidas), awPeriquitosATexto(r.periquitos)
+    ];
+    return campos.some(c => c && String(c).toLowerCase().includes(q));
+  });
 }
 
 /* ---------- Resumen (KPIs) ---------- */
@@ -441,7 +504,7 @@ function renderTablaRegistros(registros) {
   const tbody = document.getElementById('tablaRegistros');
 
   if (registros.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;color:var(--ink-soft);padding:24px;">No hay registros con estos filtros</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="17" style="text-align:center;color:var(--ink-soft);padding:24px;">No hay registros con estos filtros</td></tr>`;
     return;
   }
 
@@ -456,7 +519,7 @@ function renderTablaRegistros(registros) {
     return `
       <tr>
         <td>${awFormatDateTime(r.fecha)}</td>
-        <td>${escapeHtml(r.cliente.nombre)}</td>
+        <td>${escapeHtml(r.cliente.nombre)}${r.cuponAplicado ? ' 🎟️' : ''}</td>
         <td>${escapeHtml(r.cliente.telefono)}</td>
         <td>${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</td>
         <td>${escapeHtml(r.servicio.nombre)}</td>
@@ -470,6 +533,7 @@ function renderTablaRegistros(registros) {
         <td>${awFormatMoney(comision, r.pago.moneda)}</td>
         <td>${propinaTxt}</td>
         <td><span class="badge ${r.estado.toLowerCase()}">${r.estado}</span></td>
+        <td>${r.observaciones ? escapeHtml(r.observaciones) : '—'}</td>
         <td>
           <div class="row-actions">
             ${accionPendiente}
@@ -492,26 +556,27 @@ function renderTablaRegistros(registros) {
 
 function awWhatsAppLinkPendiente(r) {
   const numero = awNormalizarTelefonoVE(r.cliente.telefono);
-  const mensaje = `Hola, buenas Sr(a) ${r.cliente.nombre}, le escribimos de Venta Falcon Auto Motor para recordarle que el servicio de su vehículo ${r.carro.modelo} quedó con un saldo pendiente de ${awFormatMoney(r.pago.monto, r.pago.moneda)}. Quedamos atentos para coordinar el pago, ¡gracias por su preferencia!`;
+  const montoUsd = awMontosRegistro(r).usd;
+  const mensaje = `Hola, buenas Sr(a) ${r.cliente.nombre}, le escribimos de Venta Falcon Auto Motor para recordarle que el servicio de su vehículo ${r.carro.modelo} quedó con un saldo pendiente de ${awFormatMoney(montoUsd, 'USD')}. Quedamos atentos para coordinar el pago, ¡gracias por su preferencia!`;
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
 }
 
 /* ---------- Exportar CSV ---------- */
 function exportarRegistrosCsv() {
-  const registros = getFiltered();
+  const registros = aplicarBusquedaRegistros(getFiltered());
   if (registros.length === 0) { showToast('No hay registros para exportar'); return; }
 
-  const headers = ['Fecha', 'Cliente', 'Teléfono', 'Carro', 'Color', 'Servicio', 'Bebidas/Snacks', 'Periquitos', 'Método', 'Referencia', 'Monto', 'Moneda', 'Monto Bs', 'Monto $', 'Lavador', 'Porcentaje', 'Comisión', 'Propina', 'Estado'];
+  const headers = ['Fecha', 'Cliente', 'Teléfono', 'Carro', 'Color', 'Servicio', 'Cupón 50%', 'Bebidas/Snacks', 'Periquitos', 'Método', 'Referencia', 'Monto', 'Moneda', 'Monto Bs', 'Monto $', 'Lavador', 'Porcentaje', 'Comisión', 'Propina', 'Estado', 'Observaciones'];
   const filas = registros.map(r => {
     const comision = r.pago.monto * (r.porcentajeLavador / 100);
     const montos = awMontosRegistro(r);
     return [
       awFormatDateTime(r.fecha), r.cliente.nombre, r.cliente.telefono, r.carro.modelo, r.carro.color,
-      r.servicio.nombre, awBebidasATexto(r.bebidas),
+      r.servicio.nombre, r.cuponAplicado ? 'Sí' : 'No', awBebidasATexto(r.bebidas),
       awPeriquitosATexto(r.periquitos),
       awPaymentLabel(r.pago.metodo), r.pago.referencia || '', r.pago.monto, r.pago.moneda,
       montos.bs.toFixed(2), montos.usd.toFixed(2),
-      r.lavador.nombre, r.porcentajeLavador, comision.toFixed(2), r.propina.monto, r.estado
+      r.lavador.nombre, r.porcentajeLavador, comision.toFixed(2), r.propina.monto, r.estado, r.observaciones || ''
     ];
   });
 

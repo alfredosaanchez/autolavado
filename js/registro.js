@@ -10,8 +10,199 @@ let awInventarioCache = [];
 let awTasaCache = 1;
 let awTicketsHoyCache = [];
 let awPeriquitoRowCounter = 0;
+let awPerfilActual = null;
+let awSucursalActivaId = null;
+let awSucursalesCache = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
+  const licencia = await awVerificarLicencia();
+  if (licencia.bloqueado) {
+    document.getElementById('licenciaMensajeTxt').textContent = licencia.mensaje;
+    document.getElementById('licenciaBloqueo').style.display = 'flex';
+    return;
+  }
+  if (licencia.aviso) {
+    const dias = licencia.diasRestantes;
+    const banner = document.getElementById('licenciaAviso');
+    banner.textContent = dias <= 0
+      ? '⚠️ El sistema se desactivará hoy si no se renueva.'
+      : `⚠️ Quedan ${dias} día${dias === 1 ? '' : 's'} para que el sistema se desactive.`;
+    banner.style.display = 'block';
+  }
+
+  bindLoginForm();
+  bindRegistroForm();
+  bindModeSwitchLinks();
+  bindLogoutButton();
+  bindPasswordToggle();
+  awSupabase.auth.onAuthStateChange((_event, session) => {
+    if (session) resolverSesion(session);
+    else mostrarPantallaLogin();
+  });
+  awSupabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) resolverSesion(session);
+    else mostrarPantallaLogin();
+  });
+});
+
+/* ---------- Cambiar entre modo Login / Registro / Registrado-OK ---------- */
+function bindModeSwitchLinks() {
+  document.getElementById('linkIrRegistro').addEventListener('click', (e) => {
+    e.preventDefault();
+    mostrarModoLogin('registro');
+  });
+  document.getElementById('linkIrLogin').addEventListener('click', (e) => {
+    e.preventDefault();
+    mostrarModoLogin('login');
+  });
+  document.getElementById('btnVolverLoginDesdeOk').addEventListener('click', () => mostrarModoLogin('login'));
+}
+
+function mostrarModoLogin(modo) {
+  document.getElementById('loginModeLogin').style.display = modo === 'login' ? 'block' : 'none';
+  document.getElementById('loginModeRegistro').style.display = modo === 'registro' ? 'block' : 'none';
+  document.getElementById('loginModeRegistroOk').style.display = modo === 'ok' ? 'block' : 'none';
+}
+
+/* ---------- Login ---------- */
+function bindPasswordToggle() {
+  const btn = document.getElementById('toggleLoginPassword');
+  const input = document.getElementById('loginPassword');
+  btn.addEventListener('click', () => {
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    btn.textContent = showing ? '👁️' : '🙈';
+    btn.setAttribute('aria-label', showing ? 'Mostrar contraseña' : 'Ocultar contraseña');
+  });
+}
+
+function bindLoginForm() {
+  document.getElementById('form-login').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const btn = document.getElementById('loginBtn');
+    const errorMsg = document.getElementById('loginError');
+    errorMsg.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Entrando…';
+
+    const { error } = await awSupabase.auth.signInWithPassword({ email, password });
+
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+    if (error) {
+      errorMsg.textContent = 'Usuario o contraseña incorrectos.';
+    }
+  });
+}
+
+/* ---------- Registro de cuenta (autoregistro, queda pendiente de aprobación) ---------- */
+function bindRegistroForm() {
+  document.getElementById('form-registro-usuario').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('registroEmail').value.trim();
+    const password = document.getElementById('registroPassword').value;
+    const btn = document.getElementById('registroBtn');
+    const errorMsg = document.getElementById('registroError');
+    errorMsg.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Creando…';
+
+    const { error } = await awSupabase.auth.signUp({ email, password });
+
+    btn.disabled = false;
+    btn.textContent = 'Crear cuenta';
+    if (error) {
+      errorMsg.textContent = error.message === 'User already registered'
+        ? 'Ese correo ya tiene una cuenta.'
+        : 'No se pudo crear la cuenta. Intenta de nuevo.';
+      return;
+    }
+    document.getElementById('form-registro-usuario').reset();
+    mostrarModoLogin('ok');
+  });
+}
+
+function bindLogoutButton() {
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await awSupabase.auth.signOut();
+  });
+  document.getElementById('btnCerrarSesionPendiente').addEventListener('click', async () => {
+    await awSupabase.auth.signOut();
+  });
+}
+
+/* ---------- Resolver sesión ---------- */
+async function resolverSesion(session) {
+  const perfil = await awGetMiPerfil();
+  awPerfilActual = perfil;
+  if (!perfil || perfil.estado !== 'activo') {
+    mostrarPantallaPendiente(perfil);
+    return;
+  }
+  await mostrarFormularioRegistro(session, perfil);
+}
+
+function mostrarPantallaLogin() {
+  awPerfilActual = null;
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('pendingScreen').style.display = 'none';
+  document.getElementById('registroContent').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('logoutEmail').style.display = 'none';
+  mostrarModoLogin('login');
+}
+
+function mostrarPantallaPendiente(perfil) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('pendingScreen').style.display = 'flex';
+  document.getElementById('registroContent').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('logoutEmail').style.display = 'none';
+  const msgEl = document.querySelector('#pendingScreen p.hint');
+  if (perfil && perfil.estado === 'rechazado') {
+    msgEl.textContent = 'Tu acceso fue rechazado. Contacta al Dueño si crees que es un error.';
+  } else {
+    msgEl.textContent = 'Tu acceso todavía no ha sido aprobado. Contacta al Dueño para que lo apruebe y te asigne sucursal.';
+  }
+}
+
+/* ---------- Determinar sucursal activa y mostrar el formulario ---------- */
+async function mostrarFormularioRegistro(session, perfil) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('pendingScreen').style.display = 'none';
+  document.getElementById('registroContent').style.display = 'block';
+  document.getElementById('logoutBtn').style.display = 'inline-flex';
+  document.getElementById('logoutEmail').style.display = 'inline';
+  document.getElementById('logoutEmail').textContent = `${session.user.email} (${AW_ROL_LABELS[perfil.rol] || perfil.rol})`;
+
+  awSucursalesCache = await awGetSucursales();
+
+  if (perfil.rol === 'cajero') {
+    awSucursalActivaId = perfil.sucursal_id;
+    const suc = awSucursalesCache.find(s => s.id === perfil.sucursal_id);
+    document.getElementById('sucursalWidgetFijo').style.display = 'block';
+    document.getElementById('sucursalFijaTxt').textContent = suc ? suc.nombre : 'Sin asignar';
+    if (!perfil.sucursal_id) {
+      document.getElementById('sucursalFijaTxt').textContent = 'Sin asignar — avisa al Dueño';
+    }
+  } else {
+    const selSucursal = document.getElementById('sucursalSelect');
+    document.getElementById('sucursalWidgetSelect').style.display = 'flex';
+    selSucursal.innerHTML = awSucursalesCache.map(s => `<option value="${s.id}">${escapeHtml(s.nombre)}</option>`).join('');
+    const guardada = localStorage.getItem('aw_sucursal_activa');
+    const existe = awSucursalesCache.some(s => s.id === guardada);
+    awSucursalActivaId = existe ? guardada : (awSucursalesCache[0] ? awSucursalesCache[0].id : null);
+    selSucursal.value = awSucursalActivaId || '';
+    selSucursal.addEventListener('change', async () => {
+      awSucursalActivaId = selSucursal.value;
+      localStorage.setItem('aw_sucursal_activa', awSucursalActivaId);
+      await cargarConfiguracion();
+      await renderTickets();
+    });
+  }
+
   bindMetodoPago();
   bindServicioChange();
   document.getElementById('montoTotal').addEventListener('input', (e) => {
@@ -22,7 +213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('buscadorTickets').addEventListener('input', renderTicketsFiltrados);
   await cargarConfiguracion();
   await renderTickets();
-});
+}
 
 /* ---------- Cargar servicios / lavadores / bebidas / tasa y poblar selects ---------- */
 async function cargarConfiguracion() {
@@ -32,12 +223,12 @@ async function cargarConfiguracion() {
   selLav.innerHTML = '<option value="">Cargando…</option>';
 
   const [servicios, lavadores, bebidasSnacks, tasa, permitirFechaPasada, inventario] = await Promise.all([
-    awGetServicios(),
-    awGetLavadores(),
-    awGetBebidasSnacks(),
+    awGetServicios(awSucursalActivaId),
+    awGetLavadores(awSucursalActivaId),
+    awGetBebidasSnacks(awSucursalActivaId),
     awGetTasa(),
     awGetPermitirFechaPasada(),
-    awGetInventario()
+    awGetInventario(awSucursalActivaId)
   ]);
   awServiciosCache = servicios;
   awLavadoresCache = lavadores;
@@ -85,6 +276,7 @@ function renderDrinkGrid() {
 function bindServicioChange() {
   document.getElementById('servicioSelect').addEventListener('change', actualizarHintPrecio);
   document.getElementById('monedaPago').addEventListener('change', actualizarHintPrecio);
+  document.getElementById('cuponToggle').addEventListener('change', actualizarHintPrecio);
 }
 
 /* ---------- Periquitos (artículos de inventario) ---------- */
@@ -202,6 +394,9 @@ function actualizarHintPrecio() {
 
   const precioServicioUsd = s ? (s.precioUsd || 0) : 0;
   const precioServicioBs = s ? awPrecioBsEfectivo(s, tasa) : 0;
+  const cuponActivo = document.getElementById('cuponToggle').checked;
+  const precioServicioUsdFinal = cuponActivo ? precioServicioUsd * 0.5 : precioServicioUsd;
+  const precioServicioBsFinal = cuponActivo ? precioServicioBs * 0.5 : precioServicioBs;
   const bebidasBs = awCalcularCostoBebidas(awDrinkCounts, 'Bs', awBebidasSnacksCache, tasa);
   const bebidasUsd = awCalcularCostoBebidas(awDrinkCounts, 'USD', awBebidasSnacksCache, tasa);
 
@@ -209,11 +404,11 @@ function actualizarHintPrecio() {
   const periquitosBs = periquitosFilas.reduce((s, f) => s + f.cantidad * f.precioVentaBs, 0);
   const periquitosUsd = periquitosFilas.reduce((s, f) => s + f.cantidad * f.precioVentaUsd, 0);
 
-  const totalBs = precioServicioBs + bebidasBs + periquitosBs;
-  const totalUsd = precioServicioUsd + bebidasUsd + periquitosUsd;
+  const totalBs = precioServicioBsFinal + bebidasBs + periquitosBs;
+  const totalUsd = precioServicioUsdFinal + bebidasUsd + periquitosUsd;
 
   document.getElementById('resumenServicioTxt').textContent = s
-    ? `${s.nombre} — ${awFormatMoney(precioServicioBs, 'Bs')} / ${awFormatMoney(precioServicioUsd, 'USD')}`
+    ? `${s.nombre}${cuponActivo ? ' (🎟️ -50%)' : ''} — ${awFormatMoney(precioServicioBsFinal, 'Bs')} / ${awFormatMoney(precioServicioUsdFinal, 'USD')}`
     : 'Selecciona un servicio';
 
   const bebidasLinea = document.getElementById('resumenBebidasLinea');
@@ -350,7 +545,10 @@ async function onSubmitRegistro(e) {
       moneda: document.getElementById('propinaMoneda').value,
       referencia: document.getElementById('propinaReferencia').value.trim()
     },
-    estado: metodo === 'pendiente' ? 'PENDIENTE' : 'PAGADO'
+    estado: metodo === 'pendiente' ? 'PENDIENTE' : 'PAGADO',
+    sucursalId: awSucursalActivaId,
+    cuponAplicado: document.getElementById('cuponToggle').checked,
+    observaciones: document.getElementById('observacionesTexto').value.trim()
   };
 
   const ok = await awAddRegistro(registro);
@@ -385,7 +583,7 @@ async function renderTickets() {
   const list = document.getElementById('ticketList');
   list.innerHTML = `<div class="empty-state">Cargando tickets…</div>`;
 
-  const registros = await awGetRegistros();
+  const registros = await awGetRegistros(awSucursalActivaId);
   awTicketsHoyCache = registros.filter(r => awIsToday(r.fecha));
   renderTicketsFiltrados();
 }
@@ -488,13 +686,14 @@ function renderTicket(r) {
       </div>
       <div class="ticket-divider"></div>
       <div class="ticket-grid">
-        <div class="lbl">Servicio</div><div class="val">${escapeHtml(r.servicio.nombre)}</div>
+        <div class="lbl">Servicio</div><div class="val">${escapeHtml(r.servicio.nombre)}${r.cuponAplicado ? ' 🎟️ <span style="color:var(--primary);">-50%</span>' : ''}</div>
         <div class="lbl">Bebidas/Snacks</div><div class="val">${bebidasTxt}</div>
         <div class="lbl">Periquitos</div><div class="val">${periquitosTxt}</div>
         <div class="lbl">Método de pago</div><div class="val">${awPaymentLabel(r.pago.metodo)}</div>
         <div class="lbl">Referencia</div><div class="val">${r.pago.referencia ? escapeHtml(r.pago.referencia) : '—'}</div>
         <div class="lbl">Lavador</div><div class="val">${escapeHtml(r.lavador.nombre)} (${r.porcentajeLavador}%)</div>
         <div class="lbl">Propina</div><div class="val">${propinaTxt}</div>
+        ${r.observaciones ? `<div class="lbl">Obs.</div><div class="val">${escapeHtml(r.observaciones)}</div>` : ''}
       </div>
       <div class="ticket-divider"></div>
       <div class="ticket-grid">

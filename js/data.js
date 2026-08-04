@@ -11,6 +11,28 @@ function awUid() {
   return (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
 }
 
+/* ---------- Licencia (candado de pago) ---------- */
+async function awVerificarLicencia() {
+  const { data, error } = await awSupabase.from('licencia').select('*').eq('id', 1).single();
+  if (error) {
+    console.error(error);
+    return { bloqueado: false, aviso: false }; // si falla la consulta, no tumbar el sistema por error de red
+  }
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const vencimiento = new Date(data.fecha_vencimiento + 'T00:00:00');
+  const msPorDia = 24 * 60 * 60 * 1000;
+  const diasRestantes = Math.round((vencimiento - hoy) / msPorDia);
+
+  if (!data.activo || diasRestantes < 0) {
+    return { bloqueado: true, mensaje: data.mensaje_bloqueo };
+  }
+  if (diasRestantes <= data.dias_aviso) {
+    return { bloqueado: false, aviso: true, diasRestantes };
+  }
+  return { bloqueado: false, aviso: false };
+}
+
 /* ---------- Tasa de cambio ---------- */
 async function awGetTasa() {
   const { data, error } = await awSupabase.from('configuracion').select('tasa_usd_bs').eq('id', 1).single();
@@ -45,19 +67,21 @@ function awConvertir(monto, monedaOrigen, tasa) {
 }
 
 /* ---------- Servicios ---------- */
-async function awGetServicios() {
-  const { data, error } = await awSupabase.from('servicios').select('*').order('created_at');
+async function awGetServicios(sucursalId) {
+  let q = awSupabase.from('servicios').select('*').order('created_at');
+  if (sucursalId) q = q.eq('sucursal_id', sucursalId);
+  const { data, error } = await q;
   if (error) { console.error(error); return []; }
   return data.map(awMapServicioFromDb);
 }
 
 function awMapServicioFromDb(row) {
-  return { id: row.id, nombre: row.nombre, descripcion: row.descripcion, precioBs: row.precio_bs, precioUsd: row.precio_usd };
+  return { id: row.id, nombre: row.nombre, descripcion: row.descripcion, precioBs: row.precio_bs, precioUsd: row.precio_usd, sucursalId: row.sucursal_id };
 }
 
 async function awAddServicioDb(servicio) {
   const { error } = await awSupabase.from('servicios').insert({
-    nombre: servicio.nombre, descripcion: servicio.descripcion, precio_bs: servicio.precioBs, precio_usd: servicio.precioUsd
+    nombre: servicio.nombre, descripcion: servicio.descripcion, precio_bs: servicio.precioBs, precio_usd: servicio.precioUsd, sucursal_id: servicio.sucursalId
   });
   if (error) console.error(error);
 }
@@ -75,14 +99,16 @@ async function awDeleteServicioDb(id) {
 }
 
 /* ---------- Lavadores ---------- */
-async function awGetLavadores() {
-  const { data, error } = await awSupabase.from('lavadores').select('*').order('created_at');
+async function awGetLavadores(sucursalId) {
+  let q = awSupabase.from('lavadores').select('*').order('created_at');
+  if (sucursalId) q = q.eq('sucursal_id', sucursalId);
+  const { data, error } = await q;
   if (error) { console.error(error); return []; }
-  return data.map(row => ({ id: row.id, nombre: row.nombre }));
+  return data.map(row => ({ id: row.id, nombre: row.nombre, sucursalId: row.sucursal_id }));
 }
 
-async function awAddLavadorDb(nombre) {
-  const { error } = await awSupabase.from('lavadores').insert({ nombre });
+async function awAddLavadorDb(nombre, sucursalId) {
+  const { error } = await awSupabase.from('lavadores').insert({ nombre, sucursal_id: sucursalId });
   if (error) console.error(error);
 }
 
@@ -97,18 +123,20 @@ async function awDeleteLavadorDb(id) {
 }
 
 /* ---------- Bebidas y Snacks (lista configurable, con emoji) ---------- */
-async function awGetBebidasSnacks() {
-  const { data, error } = await awSupabase.from('bebidas_snacks').select('*').order('created_at');
+async function awGetBebidasSnacks(sucursalId) {
+  let q = awSupabase.from('bebidas_snacks').select('*').order('created_at');
+  if (sucursalId) q = q.eq('sucursal_id', sucursalId);
+  const { data, error } = await q;
   if (error) { console.error(error); return []; }
-  return data.map(row => ({ id: row.id, nombre: row.nombre, emoji: row.emoji, precioBs: row.precio_bs, precioUsd: row.precio_usd }));
+  return data.map(row => ({ id: row.id, nombre: row.nombre, emoji: row.emoji, precioBs: row.precio_bs, precioUsd: row.precio_usd, sucursalId: row.sucursal_id }));
 }
 
 async function awAddBebidaSnackDb(item) {
   const { data, error } = await awSupabase.from('bebidas_snacks').insert({
-    nombre: item.nombre, emoji: item.emoji, precio_bs: item.precioBs, precio_usd: item.precioUsd
+    nombre: item.nombre, emoji: item.emoji, precio_bs: item.precioBs, precio_usd: item.precioUsd, sucursal_id: item.sucursalId
   }).select().single();
   if (error) { console.error(error); return null; }
-  return { id: data.id, nombre: data.nombre, emoji: data.emoji, precioBs: data.precio_bs, precioUsd: data.precio_usd };
+  return { id: data.id, nombre: data.nombre, emoji: data.emoji, precioBs: data.precio_bs, precioUsd: data.precio_usd, sucursalId: data.sucursal_id };
 }
 
 async function awUpdateBebidaSnackDb(id, cambios) {
@@ -163,8 +191,10 @@ function awBebidasATexto(bebidas) {
 }
 
 /* ---------- Registros ---------- */
-async function awGetRegistros() {
-  const { data, error } = await awSupabase.from('registros').select('*').order('fecha', { ascending: false });
+async function awGetRegistros(sucursalId) {
+  let q = awSupabase.from('registros').select('*').order('fecha', { ascending: false });
+  if (sucursalId) q = q.eq('sucursal_id', sucursalId);
+  const { data, error } = await q;
   if (error) { console.error(error); return []; }
   return data.map(awMapRegistroFromDb);
 }
@@ -182,7 +212,10 @@ function awMapRegistroFromDb(row) {
     pago: row.pago,
     lavador: row.lavador,
     porcentajeLavador: row.porcentaje_lavador,
-    propina: row.propina
+    propina: row.propina,
+    sucursalId: row.sucursal_id,
+    cuponAplicado: !!row.cupon_aplicado,
+    observaciones: row.observaciones || ''
   };
 }
 
@@ -199,7 +232,10 @@ async function awAddRegistro(registro) {
     pago: registro.pago,
     lavador: registro.lavador,
     porcentaje_lavador: registro.porcentajeLavador,
-    propina: registro.propina
+    propina: registro.propina,
+    sucursal_id: registro.sucursalId,
+    cupon_aplicado: registro.cuponAplicado || false,
+    observaciones: registro.observaciones || ''
   });
   if (error) { console.error(error); return false; }
   return true;
@@ -268,16 +304,26 @@ async function awActualizarPerfil(id, cambios) {
 }
 
 const AW_ROL_LABELS = { dueno: 'Dueño', gerente: 'Gerente', cajero: 'Cajero' };
+
+/* ---------- Sucursales ---------- */
+async function awGetSucursales() {
+  const { data, error } = await awSupabase.from('sucursales').select('*').order('created_at');
+  if (error) { console.error(error); return []; }
+  return data.map(row => ({ id: row.id, nombre: row.nombre }));
+}
+
 const AW_ESTADO_PERFIL_LABELS = { pendiente: 'Pendiente', activo: 'Activo', rechazado: 'Rechazado' };
 
 /* ---------- Inventario (Periquitos) ---------- */
-async function awGetInventario() {
-  const { data, error } = await awSupabase.from('inventario').select('*').order('created_at');
+async function awGetInventario(sucursalId) {
+  let q = awSupabase.from('inventario').select('*').order('created_at');
+  if (sucursalId) q = q.eq('sucursal_id', sucursalId);
+  const { data, error } = await q;
   if (error) { console.error(error); return []; }
   return data.map(row => ({
     id: row.id, codigo: row.codigo, descripcion: row.descripcion, cantidad: row.cantidad,
     precioCompraUsd: row.precio_compra_usd, precioVentaUsd: row.precio_venta_usd,
-    precioCompraBs: row.precio_compra_bs, precioVentaBs: row.precio_venta_bs
+    precioCompraBs: row.precio_compra_bs, precioVentaBs: row.precio_venta_bs, sucursalId: row.sucursal_id
   }));
 }
 
@@ -285,7 +331,7 @@ async function awAddInventarioDb(item) {
   const { error } = await awSupabase.from('inventario').insert({
     codigo: item.codigo, descripcion: item.descripcion, cantidad: item.cantidad,
     precio_compra_usd: item.precioCompraUsd, precio_venta_usd: item.precioVentaUsd,
-    precio_compra_bs: item.precioCompraBs, precio_venta_bs: item.precioVentaBs
+    precio_compra_bs: item.precioCompraBs, precio_venta_bs: item.precioVentaBs, sucursal_id: item.sucursalId
   });
   if (error) console.error(error);
 }
@@ -323,15 +369,17 @@ function awPeriquitosATexto(periquitos) {
 }
 
 /* ---------- Gastos del negocio ---------- */
-async function awGetGastos() {
-  const { data, error } = await awSupabase.from('gastos').select('*').order('fecha', { ascending: false });
+async function awGetGastos(sucursalId) {
+  let q = awSupabase.from('gastos').select('*').order('fecha', { ascending: false });
+  if (sucursalId) q = q.eq('sucursal_id', sucursalId);
+  const { data, error } = await q;
   if (error) { console.error(error); return []; }
-  return data.map(row => ({ id: row.id, fecha: row.fecha, descripcion: row.descripcion, categoria: row.categoria, monto: row.monto, moneda: row.moneda }));
+  return data.map(row => ({ id: row.id, fecha: row.fecha, descripcion: row.descripcion, categoria: row.categoria, monto: row.monto, moneda: row.moneda, sucursalId: row.sucursal_id }));
 }
 
 async function awAddGastoDb(gasto) {
   const { error } = await awSupabase.from('gastos').insert({
-    fecha: gasto.fecha, descripcion: gasto.descripcion, categoria: gasto.categoria, monto: gasto.monto, moneda: gasto.moneda
+    fecha: gasto.fecha, descripcion: gasto.descripcion, categoria: gasto.categoria, monto: gasto.monto, moneda: gasto.moneda, sucursal_id: gasto.sucursalId
   });
   if (error) { console.error(error); return false; }
   return true;
