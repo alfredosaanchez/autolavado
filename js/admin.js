@@ -334,28 +334,17 @@ function poblarFiltroSelects() {
 }
 
 function bindFiltros() {
-  // Filtros retirados de Lavadores, Bebidas y Snacks y Servicios.
-  // Se mantienen solamente controles que existan en la vista.
-  const filtros = ['filtroDesde', 'filtroHasta', 'filtroEstado', 'filtroLavador', 'filtroServicio'];
-  filtros.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('change', renderFromCache);
+  ['filtroDesde', 'filtroHasta', 'filtroEstado', 'filtroLavador', 'filtroServicio'].forEach(id => {
+    document.getElementById(id).addEventListener('change', renderFromCache);
   });
-
-  const buscador = document.getElementById('buscadorRegistrosAdmin');
-  if (buscador) buscador.addEventListener('input', renderFromCache);
-
-  const limpiar = document.getElementById('btnLimpiarFiltros');
-  if (limpiar) {
-    limpiar.addEventListener('click', () => {
-      filtros.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-      });
-      if (buscador) buscador.value = '';
-      renderFromCache();
+  document.getElementById('buscadorRegistrosAdmin').addEventListener('input', renderFromCache);
+  document.getElementById('btnLimpiarFiltros').addEventListener('click', () => {
+    ['filtroDesde', 'filtroHasta', 'filtroEstado', 'filtroLavador', 'filtroServicio'].forEach(id => {
+      document.getElementById(id).value = '';
     });
-  }
+    document.getElementById('buscadorRegistrosAdmin').value = '';
+    renderFromCache();
+  });
 }
 
 function getFiltered() {
