@@ -1122,6 +1122,7 @@ async function renderUsuarios() {
             ${AW_ROLES_DISPONIBLES.map(r => `<option value="${r}" ${r === p.rol ? 'selected' : ''}>${AW_ROL_LABELS[r]}</option>`).join('')}
           </select>
           <select data-cambiar-sucursal="${p.id}" style="${p.rol === 'cajero' ? '' : 'display:none;'}">${opcionesSucursal}</select>
+          <button class="btn btn-primary btn-sm" data-guardar-cambios="${p.id}">💾 Guardar cambios</button>
           <button class="btn btn-danger btn-sm" data-revocar="${p.id}">Revocar acceso</button>
         </div>`;
     } else {
@@ -1147,14 +1148,30 @@ async function renderUsuarios() {
     });
   });
   tbody.querySelectorAll('[data-cambiar-rol]').forEach(sel => {
-    sel.addEventListener('change', async () => {
+    sel.addEventListener('change', () => {
       const selSucursal = tbody.querySelector(`[data-cambiar-sucursal="${sel.dataset.cambiarRol}"]`);
       if (selSucursal) selSucursal.style.display = sel.value === 'cajero' ? '' : 'none';
-      const cambios = { rol: sel.value };
-      if (sel.value === 'cajero' && selSucursal) cambios.sucursal_id = selSucursal.value;
-      const ok = await awActualizarPerfil(sel.dataset.cambiarRol, cambios);
-      showToast(ok ? 'Nivel actualizado' : 'No se pudo actualizar');
-      if (!ok) await renderUsuarios();
+    });
+  });
+
+  tbody.querySelectorAll('[data-guardar-cambios]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.guardarCambios;
+      const selRol = tbody.querySelector(`[data-cambiar-rol="${id}"]`);
+      const selSucursal = tbody.querySelector(`[data-cambiar-sucursal="${id}"]`);
+      const cambios = { rol: selRol.value };
+      if (selRol.value === 'cajero') {
+        if (!selSucursal || !selSucursal.value) {
+          showToast('Selecciona la sucursal del cajero');
+          return;
+        }
+        cambios.sucursal_id = selSucursal.value;
+      } else {
+        cambios.sucursal_id = null;
+      }
+      const ok = await awActualizarPerfil(id, cambios);
+      showToast(ok ? 'Cambios guardados' : 'No se pudo actualizar');
+      await renderUsuarios();
     });
   });
 
