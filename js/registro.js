@@ -217,9 +217,7 @@ async function mostrarFormularioRegistro(session, perfil) {
 
 /* ---------- Cargar servicios / lavadores / bebidas / tasa y poblar selects ---------- */
 async function cargarConfiguracion() {
-  const sel = document.getElementById('servicioSelect');
   const selLav = document.getElementById('lavadorSelect');
-  sel.innerHTML = '<option value="">Cargando…</option>';
   selLav.innerHTML = '<option value="">Cargando…</option>';
 
   const [servicios, lavadores, bebidasSnacks, tasa, permitirFechaPasada, inventario] = await Promise.all([
@@ -241,10 +239,8 @@ async function cargarConfiguracion() {
   document.getElementById('tasaDisplay').textContent = awFormatMoney(awTasaCache, 'Bs');
   document.getElementById('fechaPasadaSection').style.display = permitirFechaPasada ? 'block' : 'none';
   document.getElementById('periquitosFilas').innerHTML = '';
-
-  sel.innerHTML = servicios.map(s =>
-    `<option value="${s.id}">${escapeHtml(s.nombre)}${s.descripcion ? ' — ' + escapeHtml(s.descripcion) : ''}</option>`
-  ).join('') || '<option value="">No hay servicios configurados</option>';
+  document.getElementById('serviciosFilas').innerHTML = '';
+  addServicioFila();
 
   selLav.innerHTML = lavadores.map(l =>
     `<option value="${l.id}">${escapeHtml(l.nombre)}</option>`
@@ -273,10 +269,75 @@ function renderDrinkGrid() {
   bindDrinkSteppers();
 }
 
+/* ---------- Servicios de lavado (varios por ticket) ---------- */
+let awServicioFilaCounter = 0;
+function addServicioFila() {
+  const id = `sv-${++awServicioFilaCounter}`;
+  const cont = document.getElementById('serviciosFilas');
+  const div = document.createElement('div');
+  div.className = 'periquito-fila';
+  div.dataset.filaId = id;
+  const opciones = awServiciosCache.map(s => `<option value="${s.id}">${escapeHtml(s.nombre)}${s.descripcion ? ' — ' + escapeHtml(s.descripcion) : ''}</option>`).join('');
+  div.innerHTML = `
+    <div class="field">
+      <label>Tipo de servicio</label>
+      <select class="servicio-select-fila">
+        <option value="">Selecciona…</option>
+        ${opciones}
+      </select>
+    </div>
+    <div class="field" style="max-width:150px; flex:none;">
+      <label>&nbsp;</label>
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:.78rem; padding:9px 0;">
+        <input type="checkbox" class="servicio-cupon-fila" style="width:15px; height:15px; cursor:pointer;">
+        🎟️ Cupón 50%
+      </label>
+    </div>
+    ${awServiciosCache.length === 0 ? '' : '<button type="button" class="btn-quitar-fila" title="Quitar">×</button>'}
+  `;
+  cont.appendChild(div);
+
+  if (awServiciosCache.length === 0) {
+    div.querySelector('.servicio-select-fila').innerHTML = '<option value="">No hay servicios configurados</option>';
+  }
+
+  div.querySelector('.servicio-select-fila').addEventListener('change', actualizarHintPrecio);
+  div.querySelector('.servicio-cupon-fila').addEventListener('change', actualizarHintPrecio);
+  const btnQuitar = div.querySelector('.btn-quitar-fila');
+  if (btnQuitar) {
+    btnQuitar.addEventListener('click', () => {
+      if (document.querySelectorAll('#serviciosFilas .periquito-fila').length <= 1) return;
+      div.remove();
+      actualizarHintPrecio();
+    });
+  }
+  actualizarHintPrecio();
+}
+
+function leerFilasServicios() {
+  const filas = [];
+  document.querySelectorAll('#serviciosFilas .periquito-fila').forEach(div => {
+    const servicioId = div.querySelector('.servicio-select-fila').value;
+    const s = awServiciosCache.find(x => x.id === servicioId);
+    if (!s) return;
+    const cuponAplicado = div.querySelector('.servicio-cupon-fila').checked;
+    const factor = cuponAplicado ? 0.5 : 1;
+    filas.push({
+      id: s.id,
+      nombre: s.nombre,
+      precioUsd: s.precioUsd,
+      precioBs: awPrecioBsEfectivo(s, awTasaCache),
+      cuponAplicado,
+      precioUsdFinal: (s.precioUsd || 0) * factor,
+      precioBsFinal: awPrecioBsEfectivo(s, awTasaCache) * factor
+    });
+  });
+  return filas;
+}
+
 function bindServicioChange() {
-  document.getElementById('servicioSelect').addEventListener('change', actualizarHintPrecio);
   document.getElementById('monedaPago').addEventListener('change', actualizarHintPrecio);
-  document.getElementById('cuponToggle').addEventListener('change', actualizarHintPrecio);
+  document.getElementById('btnAddServicioFila').addEventListener('click', addServicioFila);
 }
 
 /* ---------- Periquitos (artículos de inventario) ---------- */
@@ -387,16 +448,13 @@ function leerFilasPeriquitos() {
 
 /* ---------- Resumen de cobro (usa la tasa para que TODO cuadre en ambas monedas) ---------- */
 function actualizarHintPrecio() {
-  const id = document.getElementById('servicioSelect').value;
   const moneda = document.getElementById('monedaPago').value;
-  const s = awServiciosCache.find(x => x.id === id);
   const tasa = awTasaCache || 1;
 
-  const precioServicioUsd = s ? (s.precioUsd || 0) : 0;
-  const precioServicioBs = s ? awPrecioBsEfectivo(s, tasa) : 0;
-  const cuponActivo = document.getElementById('cuponToggle').checked;
-  const precioServicioUsdFinal = cuponActivo ? precioServicioUsd * 0.5 : precioServicioUsd;
-  const precioServicioBsFinal = cuponActivo ? precioServicioBs * 0.5 : precioServicioBs;
+  const serviciosFilas = leerFilasServicios();
+  const precioServiciosBs = serviciosFilas.reduce((sum, f) => sum + f.precioBsFinal, 0);
+  const precioServiciosUsd = serviciosFilas.reduce((sum, f) => sum + f.precioUsdFinal, 0);
+
   const bebidasBs = awCalcularCostoBebidas(awDrinkCounts, 'Bs', awBebidasSnacksCache, tasa);
   const bebidasUsd = awCalcularCostoBebidas(awDrinkCounts, 'USD', awBebidasSnacksCache, tasa);
 
@@ -404,12 +462,12 @@ function actualizarHintPrecio() {
   const periquitosBs = periquitosFilas.reduce((s, f) => s + f.cantidad * f.precioVentaBs, 0);
   const periquitosUsd = periquitosFilas.reduce((s, f) => s + f.cantidad * f.precioVentaUsd, 0);
 
-  const totalBs = precioServicioBsFinal + bebidasBs + periquitosBs;
-  const totalUsd = precioServicioUsdFinal + bebidasUsd + periquitosUsd;
+  const totalBs = precioServiciosBs + bebidasBs + periquitosBs;
+  const totalUsd = precioServiciosUsd + bebidasUsd + periquitosUsd;
 
-  document.getElementById('resumenServicioTxt').textContent = s
-    ? `${s.nombre}${cuponActivo ? ' (🎟️ -50%)' : ''} — ${awFormatMoney(precioServicioBsFinal, 'Bs')} / ${awFormatMoney(precioServicioUsdFinal, 'USD')}`
-    : 'Selecciona un servicio';
+  document.getElementById('resumenServicioTxt').textContent = serviciosFilas.length > 0
+    ? serviciosFilas.map(f => `${f.nombre}${f.cuponAplicado ? ' 🎟️-50%' : ''}`).join(', ') + ` — ${awFormatMoney(precioServiciosBs, 'Bs')} / ${awFormatMoney(precioServiciosUsd, 'USD')}`
+    : 'Selecciona al menos un servicio';
 
   const bebidasLinea = document.getElementById('resumenBebidasLinea');
   const bebidasHayAlguna = Object.values(awDrinkCounts).some(v => v > 0);
@@ -438,7 +496,7 @@ function actualizarHintPrecio() {
 
   const hint = document.getElementById('servicioPrecioHint');
   const totalMoneda = moneda === 'USD' ? totalUsd : totalBs;
-  hint.textContent = s ? `Se sugiere cobrar ${awFormatMoney(totalMoneda, moneda)} en ${moneda}. (Tasa: ${awFormatMoney(tasa, 'Bs')}/$)` : '';
+  hint.textContent = serviciosFilas.length > 0 ? `Se sugiere cobrar ${awFormatMoney(totalMoneda, moneda)} en ${moneda}. (Tasa: ${awFormatMoney(tasa, 'Bs')}/$)` : '';
 
   const montoInput = document.getElementById('montoTotal');
   if (!montoInput.dataset.touched) {
@@ -489,10 +547,16 @@ async function onSubmitRegistro(e) {
   submitBtn.textContent = 'Guardando…';
 
   const metodo = document.querySelector('input[name="metodoPago"]:checked').value;
-  const servicioId = document.getElementById('servicioSelect').value;
+  const serviciosFilas = leerFilasServicios();
   const lavadorId = document.getElementById('lavadorSelect').value;
-  const servicio = awServiciosCache.find(s => s.id === servicioId);
   const lavador = awLavadoresCache.find(l => l.id === lavadorId);
+
+  if (serviciosFilas.length === 0) {
+    showToast('Selecciona al menos un servicio');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Registrar lavado';
+    return;
+  }
 
   const monedaPago = document.getElementById('monedaPago').value;
   const montoFinal = parseFloat(document.getElementById('montoTotal').value) || 0;
@@ -517,7 +581,7 @@ async function onSubmitRegistro(e) {
       modelo: document.getElementById('carroModelo').value.trim(),
       color: document.getElementById('carroColor').value.trim()
     },
-    servicio: { id: servicioId, nombre: servicio ? servicio.nombre : '—' },
+    servicios: serviciosFilas,
     bebidas: awBebidasSnacksCache
       .filter(item => (awDrinkCounts[item.id] || 0) > 0)
       .map(item => ({
@@ -547,7 +611,7 @@ async function onSubmitRegistro(e) {
     },
     estado: metodo === 'pendiente' ? 'PENDIENTE' : 'PAGADO',
     sucursalId: awSucursalActivaId,
-    cuponAplicado: document.getElementById('cuponToggle').checked,
+    cuponAplicado: serviciosFilas.some(f => f.cuponAplicado),
     observaciones: document.getElementById('observacionesTexto').value.trim()
   };
 
@@ -572,10 +636,12 @@ function resetForm() {
   awBebidasSnacksCache.forEach(item => { awDrinkCounts[item.id] = 0; });
   document.querySelectorAll('#drinkGrid .stepper span').forEach(span => { span.textContent = '0'; });
   document.getElementById('periquitosFilas').innerHTML = '';
+  document.getElementById('serviciosFilas').innerHTML = '';
+  addServicioFila();
   document.getElementById('montoTotal').dataset.touched = '';
   updateReferenciaVisibility();
   actualizarHintPrecio();
-  awGetInventario().then(inv => { awInventarioCache = inv; });
+  awGetInventario(awSucursalActivaId).then(inv => { awInventarioCache = inv; });
 }
 
 /* ---------- Render de tickets del día ---------- */
@@ -686,7 +752,7 @@ function renderTicket(r) {
       </div>
       <div class="ticket-divider"></div>
       <div class="ticket-grid">
-        <div class="lbl">Servicio</div><div class="val">${escapeHtml(r.servicio.nombre)}${r.cuponAplicado ? ' 🎟️ <span style="color:var(--primary);">-50%</span>' : ''}</div>
+        <div class="lbl">Servicio</div><div class="val">${escapeHtml(awServiciosATexto(r.servicios))}</div>
         <div class="lbl">Bebidas/Snacks</div><div class="val">${bebidasTxt}</div>
         <div class="lbl">Periquitos</div><div class="val">${periquitosTxt}</div>
         <div class="lbl">Método de pago</div><div class="val">${awPaymentLabel(r.pago.metodo)}</div>
@@ -753,7 +819,7 @@ function imprimirTicket(id) {
       </table>
       <hr>
       <table>
-        <tr><td class="lbl">Servicio</td><td class="val">${escapeHtml(r.servicio.nombre)}</td></tr>
+        <tr><td class="lbl">Servicio</td><td class="val">${escapeHtml(awServiciosATexto(r.servicios))}</td></tr>
         <tr><td class="lbl">Bebidas/Snacks</td><td class="val">${escapeHtml(bebidasTxt)}</td></tr>
         <tr><td class="lbl">Periquitos</td><td class="val">${escapeHtml(periquitosTxt)}</td></tr>
         <tr><td class="lbl">Lavador</td><td class="val">${escapeHtml(r.lavador.nombre)}</td></tr>

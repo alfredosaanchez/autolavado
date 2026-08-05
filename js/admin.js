@@ -272,6 +272,17 @@ async function configurarSucursalAdmin() {
   });
 }
 
+/* Filtra una lista cacheada (servicios/bebidas/inventario/lavadores/gastos) por la sucursal activa */
+function awFiltrarPorSucursalActiva(lista) {
+  if (awSucursalActivaAdmin === 'todas') return lista;
+  return lista.filter(item => item.sucursalId === awSucursalActivaAdmin);
+}
+
+function awNombreSucursal(id) {
+  const s = awSucursalesCache.find(x => x.id === id);
+  return s ? s.nombre : '—';
+}
+
 async function cargarFechaPasadaToggle() {
   const valor = await awGetPermitirFechaPasada();
   document.getElementById('fechaPasadaToggle').checked = valor;
@@ -349,7 +360,8 @@ function getFiltered() {
     if (hasta && fecha > new Date(hasta + 'T23:59:59')) return false;
     if (estado && r.estado !== estado) return false;
     if (lavadorId && r.lavador.id !== lavadorId) return false;
-    if (servicioId && r.servicio.id !== servicioId) return false;
+    if (servicioId && !(r.servicios || []).some(s => s.id === servicioId)) return false;
+    if (awSucursalActivaAdmin !== 'todas' && r.sucursalId !== awSucursalActivaAdmin) return false;
     return true;
   });
 }
@@ -407,7 +419,7 @@ function aplicarBusquedaRegistros(registros) {
   return registros.filter(r => {
     const campos = [
       r.cliente.nombre, r.cliente.telefono, r.carro.modelo, r.carro.color,
-      r.servicio.nombre, r.lavador.nombre, r.pago.referencia, r.pago.metodo,
+      awServiciosATexto(r.servicios), r.lavador.nombre, r.pago.referencia, r.pago.metodo,
       r.estado, r.observaciones, awBebidasATexto(r.bebidas), awPeriquitosATexto(r.periquitos)
     ];
     return campos.some(c => c && String(c).toLowerCase().includes(q));
@@ -460,7 +472,7 @@ function renderResumen(registros) {
         <td>${escapeHtml(r.cliente.nombre)}</td>
         <td>${escapeHtml(r.cliente.telefono)}</td>
         <td>${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</td>
-        <td>${escapeHtml(r.servicio.nombre)}</td>
+        <td>${escapeHtml(awServiciosATexto(r.servicios))}</td>
         <td>${awFormatMoney(r.pago.monto, r.pago.moneda)}</td>
         <td>${awFormatDateTime(r.fecha)}</td>
       </tr>
@@ -522,7 +534,7 @@ function renderTablaRegistros(registros) {
         <td>${escapeHtml(r.cliente.nombre)}${r.cuponAplicado ? ' 🎟️' : ''}</td>
         <td>${escapeHtml(r.cliente.telefono)}</td>
         <td>${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</td>
-        <td>${escapeHtml(r.servicio.nombre)}</td>
+        <td>${escapeHtml(awServiciosATexto(r.servicios))}</td>
         <td>${escapeHtml(bebidasTxt)}</td>
         <td>${escapeHtml(periquitosTxt)}</td>
         <td>${awPaymentLabel(r.pago.metodo)}</td>
@@ -572,7 +584,7 @@ function exportarRegistrosCsv() {
     const montos = awMontosRegistro(r);
     return [
       awFormatDateTime(r.fecha), r.cliente.nombre, r.cliente.telefono, r.carro.modelo, r.carro.color,
-      r.servicio.nombre, r.cuponAplicado ? 'Sí' : 'No', awBebidasATexto(r.bebidas),
+      awServiciosATexto(r.servicios), r.cuponAplicado ? 'Sí' : 'No', awBebidasATexto(r.bebidas),
       awPeriquitosATexto(r.periquitos),
       awPaymentLabel(r.pago.metodo), r.pago.referencia || '', r.pago.monto, r.pago.moneda,
       montos.bs.toFixed(2), montos.usd.toFixed(2),
@@ -597,6 +609,7 @@ function exportarRegistrosCsv() {
 /* ---------- Gastos del negocio ---------- */
 async function onSubmitGasto(e) {
   e.preventDefault();
+  if (awSucursalActivaAdmin === 'todas') { showToast('Selecciona una sucursal específica para registrar el gasto'); return; }
   const btn = e.target.querySelector('button[type="submit"]');
   btn.disabled = true;
   const ok = await awAddGastoDb({
@@ -604,7 +617,8 @@ async function onSubmitGasto(e) {
     descripcion: document.getElementById('gastoDescripcion').value.trim(),
     categoria: document.getElementById('gastoCategoria').value.trim(),
     monto: parseFloat(document.getElementById('gastoMonto').value) || 0,
-    moneda: document.getElementById('gastoMoneda').value
+    moneda: document.getElementById('gastoMoneda').value,
+    sucursalId: awSucursalActivaAdmin
   });
   btn.disabled = false;
   if (!ok) { showToast('No se pudo guardar el gasto'); return; }
@@ -618,15 +632,16 @@ async function onSubmitGasto(e) {
 
 function renderGastos() {
   const tbody = document.getElementById('tablaGastos');
-  const totalBs = sumBy(awGastosCache.filter(g => g.moneda === 'Bs'), g => g.monto);
-  const totalUsd = sumBy(awGastosCache.filter(g => g.moneda === 'USD'), g => g.monto);
+  const gastosVista = awFiltrarPorSucursalActiva(awGastosCache);
+  const totalBs = sumBy(gastosVista.filter(g => g.moneda === 'Bs'), g => g.monto);
+  const totalUsd = sumBy(gastosVista.filter(g => g.moneda === 'USD'), g => g.monto);
   document.getElementById('gastosResumenTxt').textContent = `Total: ${awFormatMoney(totalBs, 'Bs')} · ${awFormatMoney(totalUsd, 'USD')}`;
 
-  if (awGastosCache.length === 0) {
+  if (gastosVista.length === 0) {
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:20px;">No hay gastos registrados todavía</td></tr>`;
     return;
   }
-  tbody.innerHTML = awGastosCache.map(g => `
+  tbody.innerHTML = gastosVista.map(g => `
     <tr>
       <td>${awFormatDateTime(g.fecha)}</td>
       <td>${g.categoria ? escapeHtml(g.categoria) : '—'}</td>
@@ -652,13 +667,15 @@ function renderGastos() {
 /* ---------- Servicios (guardado en lote, Bs auto por tasa) ---------- */
 function renderServicios() {
   const cont = document.getElementById('listaServicios');
-  if (awServiciosCache.length === 0) {
-    cont.innerHTML = `<div class="empty-state">No hay servicios configurados todavía.</div>`;
+  const lista = awFiltrarPorSucursalActiva(awServiciosCache);
+  if (lista.length === 0) {
+    cont.innerHTML = `<div class="empty-state">No hay servicios configurados todavía${awSucursalActivaAdmin !== 'todas' ? ' en esta sucursal' : ''}.</div>`;
     return;
   }
-  cont.innerHTML = awServiciosCache.map(s => `
+  cont.innerHTML = lista.map(s => `
     <div class="manage-item" data-servicio-id="${s.id}">
       <div class="mi-fields">
+        ${awSucursalActivaAdmin === 'todas' ? `<div class="hint" style="flex-basis:100%; margin-bottom:-6px;">📍 ${escapeHtml(awNombreSucursal(s.sucursalId))}</div>` : ''}
         <div class="field"><label>Nombre</label><input type="text" value="${escapeAttr(s.nombre)}" data-field="nombre"></div>
         <div class="field"><label>Descripción</label><input type="text" value="${escapeAttr(s.descripcion || '')}" data-field="descripcion"></div>
         <div class="field"><label>Precio $</label><input type="number" step="0.01" min="0" value="${s.precioUsd}" data-field="precioUsd"></div>
@@ -690,7 +707,8 @@ function bindAutoBs(container) {
 }
 
 function addServicioLocal() {
-  awServiciosCache.push({ id: awTempId(), nombre: `Servicio nuevo`, descripcion: '', precioBs: 0, precioUsd: 0, _nuevo: true });
+  if (awSucursalActivaAdmin === 'todas') { showToast('Selecciona una sucursal específica para agregar servicios'); return; }
+  awServiciosCache.push({ id: awTempId(), nombre: `Servicio nuevo`, descripcion: '', precioBs: 0, precioUsd: 0, sucursalId: awSucursalActivaAdmin, _nuevo: true });
   renderServicios();
 }
 
@@ -706,7 +724,8 @@ async function guardarServicios() {
       nombre: item.querySelector('[data-field="nombre"]').value.trim() || 'Servicio',
       descripcion: item.querySelector('[data-field="descripcion"]').value.trim(),
       precioUsd: precioUsd,
-      precioBs: precioUsd * awTasaCache
+      precioBs: precioUsd * awTasaCache,
+      sucursalId: s.sucursalId
     };
     if (s._nuevo) await awAddServicioDb(cambios);
     else await awUpdateServicioDb(s.id, cambios);
@@ -728,15 +747,17 @@ async function deleteServicio(id) {
 function renderInventario() {
   const cont = document.getElementById('listaInventario');
   if (!cont) return;
-  if (awInventarioCache.length === 0) {
-    cont.innerHTML = `<div class="empty-state">No hay artículos en el inventario todavía.</div>`;
+  const lista = awFiltrarPorSucursalActiva(awInventarioCache);
+  if (lista.length === 0) {
+    cont.innerHTML = `<div class="empty-state">No hay artículos en el inventario todavía${awSucursalActivaAdmin !== 'todas' ? ' en esta sucursal' : ''}.</div>`;
     return;
   }
-  cont.innerHTML = awInventarioCache.map(item => {
+  cont.innerHTML = lista.map(item => {
     const stockBajo = item.cantidad <= 3;
     return `
     <div class="manage-item" data-inv-id="${item.id}">
       <div class="mi-fields">
+        ${awSucursalActivaAdmin === 'todas' ? `<div class="hint" style="flex-basis:100%; margin-bottom:-6px;">📍 ${escapeHtml(awNombreSucursal(item.sucursalId))}</div>` : ''}
         <div class="field" style="max-width:110px;"><label>Código</label><input type="text" value="${escapeAttr(item.codigo)}" data-field="codigo"></div>
         <div class="field"><label>Descripción</label><input type="text" value="${escapeAttr(item.descripcion)}" data-field="descripcion"></div>
         <div class="field" style="max-width:90px;">
@@ -776,7 +797,8 @@ function renderInventario() {
 }
 
 function addInventarioLocal() {
-  awInventarioCache.push({ id: awTempId(), codigo: '', descripcion: 'Artículo nuevo', cantidad: 0, precioCompraUsd: 0, precioVentaUsd: 0, precioCompraBs: 0, precioVentaBs: 0, _nuevo: true });
+  if (awSucursalActivaAdmin === 'todas') { showToast('Selecciona una sucursal específica para agregar artículos'); return; }
+  awInventarioCache.push({ id: awTempId(), codigo: '', descripcion: 'Artículo nuevo', cantidad: 0, precioCompraUsd: 0, precioVentaUsd: 0, precioCompraBs: 0, precioVentaBs: 0, sucursalId: awSucursalActivaAdmin, _nuevo: true });
   renderInventario();
 }
 
@@ -795,7 +817,8 @@ async function guardarInventario() {
       cantidad: parseInt(el.querySelector('[data-field="cantidad"]').value, 10) || 0,
       precioCompraUsd, precioVentaUsd,
       precioCompraBs: precioCompraUsd * awTasaCache,
-      precioVentaBs: precioVentaUsd * awTasaCache
+      precioVentaBs: precioVentaUsd * awTasaCache,
+      sucursalId: item.sucursalId
     };
     if (item._nuevo) await awAddInventarioDb(cambios);
     else await awUpdateInventarioDb(item.id, cambios);
@@ -918,13 +941,15 @@ function leerArchivoInventario(file) {
 /* ---------- Bebidas y Snacks (guardado en lote, con emoji, Bs auto por tasa) ---------- */
 function renderBebidas() {
   const cont = document.getElementById('listaBebidas');
-  if (awBebidasSnacksCache.length === 0) {
-    cont.innerHTML = `<div class="empty-state">No hay bebidas/snacks configurados todavía.</div>`;
+  const lista = awFiltrarPorSucursalActiva(awBebidasSnacksCache);
+  if (lista.length === 0) {
+    cont.innerHTML = `<div class="empty-state">No hay bebidas/snacks configurados todavía${awSucursalActivaAdmin !== 'todas' ? ' en esta sucursal' : ''}.</div>`;
     return;
   }
-  cont.innerHTML = awBebidasSnacksCache.map(item => `
+  cont.innerHTML = lista.map(item => `
     <div class="manage-item" data-bebida-id="${item.id}">
       <div class="mi-fields">
+        ${awSucursalActivaAdmin === 'todas' ? `<div class="hint" style="flex-basis:100%; margin-bottom:-6px;">📍 ${escapeHtml(awNombreSucursal(item.sucursalId))}</div>` : ''}
         <div class="field" style="max-width:90px;">
           <label>Emoji</label>
           <select data-field="emoji">
@@ -951,7 +976,8 @@ function renderBebidas() {
 }
 
 function addBebidaLocal() {
-  awBebidasSnacksCache.push({ id: awTempId(), nombre: 'Nuevo artículo', emoji: '🥤', precioBs: 0, precioUsd: 0, _nuevo: true });
+  if (awSucursalActivaAdmin === 'todas') { showToast('Selecciona una sucursal específica para agregar artículos'); return; }
+  awBebidasSnacksCache.push({ id: awTempId(), nombre: 'Nuevo artículo', emoji: '🥤', precioBs: 0, precioUsd: 0, sucursalId: awSucursalActivaAdmin, _nuevo: true });
   renderBebidas();
 }
 
@@ -967,7 +993,8 @@ async function guardarBebidas() {
       nombre: el.querySelector('[data-field="nombre"]').value.trim() || 'Artículo',
       emoji: el.querySelector('[data-field="emoji"]').value,
       precioUsd: precioUsd,
-      precioBs: precioUsd * awTasaCache
+      precioBs: precioUsd * awTasaCache,
+      sucursalId: item.sucursalId
     };
     if (item._nuevo) await awAddBebidaSnackDb(cambios);
     else await awUpdateBebidaSnackDb(item.id, cambios);
@@ -988,13 +1015,15 @@ async function deleteBebida(id) {
 /* ---------- Lavadores (guardado en lote) ---------- */
 function renderLavadores() {
   const cont = document.getElementById('listaLavadores');
-  if (awLavadoresCache.length === 0) {
-    cont.innerHTML = `<div class="empty-state">No hay lavadores configurados todavía.</div>`;
+  const lista = awFiltrarPorSucursalActiva(awLavadoresCache);
+  if (lista.length === 0) {
+    cont.innerHTML = `<div class="empty-state">No hay lavadores configurados todavía${awSucursalActivaAdmin !== 'todas' ? ' en esta sucursal' : ''}.</div>`;
     return;
   }
-  cont.innerHTML = awLavadoresCache.map(l => `
+  cont.innerHTML = lista.map(l => `
     <div class="manage-item" data-lavador-id="${l.id}">
       <div class="mi-fields">
+        ${awSucursalActivaAdmin === 'todas' ? `<div class="hint" style="flex-basis:100%; margin-bottom:-6px;">📍 ${escapeHtml(awNombreSucursal(l.sucursalId))}</div>` : ''}
         <div class="field"><label>Nombre</label><input type="text" value="${escapeAttr(l.nombre)}" data-field="nombre"></div>
       </div>
       <div class="row-actions">
@@ -1011,7 +1040,8 @@ function renderLavadores() {
 }
 
 function addLavadorLocal() {
-  awLavadoresCache.push({ id: awTempId(), nombre: 'Lavador nuevo', _nuevo: true });
+  if (awSucursalActivaAdmin === 'todas') { showToast('Selecciona una sucursal específica para agregar lavadores'); return; }
+  awLavadoresCache.push({ id: awTempId(), nombre: 'Lavador nuevo', sucursalId: awSucursalActivaAdmin, _nuevo: true });
   renderLavadores();
 }
 
@@ -1023,7 +1053,7 @@ async function guardarLavadores() {
     const el = document.querySelector(`[data-lavador-id="${l.id}"]`);
     if (!el) continue;
     const nombre = el.querySelector('[data-field="nombre"]').value.trim() || 'Lavador';
-    if (l._nuevo) await awAddLavadorDb(nombre);
+    if (l._nuevo) await awAddLavadorDb(nombre, l.sucursalId);
     else await awUpdateLavadorDb(l.id, nombre);
   }
   btn.disabled = false;
@@ -1073,22 +1103,25 @@ async function renderUsuarios() {
 
   tbody.innerHTML = perfiles.map(p => {
     const esUnoMismo = p.id === awPerfilActual.id;
+    const opcionesSucursal = awSucursalesCache.map(s => `<option value="${s.id}" ${s.id === p.sucursal_id ? 'selected' : ''}>${escapeHtml(s.nombre)}</option>`).join('');
     let acciones = '';
     if (p.estado === 'pendiente') {
       acciones = `
-        <div class="row-actions">
+        <div class="row-actions" style="flex-wrap:wrap;">
           <select data-nivel-nuevo="${p.id}">
             ${AW_ROLES_DISPONIBLES.map(r => `<option value="${r}" ${r === p.rol ? 'selected' : ''}>${AW_ROL_LABELS[r]}</option>`).join('')}
           </select>
+          <select data-sucursal-nueva="${p.id}" style="${p.rol === 'cajero' ? '' : 'display:none;'}">${opcionesSucursal}</select>
           <button class="btn btn-primary btn-sm" data-aceptar="${p.id}">Aceptar</button>
           <button class="btn btn-danger btn-sm" data-rechazar="${p.id}">Rechazar</button>
         </div>`;
     } else if (p.estado === 'activo') {
       acciones = esUnoMismo ? '<span class="hint">Eres tú</span>' : `
-        <div class="row-actions">
+        <div class="row-actions" style="flex-wrap:wrap;">
           <select data-cambiar-rol="${p.id}">
             ${AW_ROLES_DISPONIBLES.map(r => `<option value="${r}" ${r === p.rol ? 'selected' : ''}>${AW_ROL_LABELS[r]}</option>`).join('')}
           </select>
+          <select data-cambiar-sucursal="${p.id}" style="${p.rol === 'cajero' ? '' : 'display:none;'}">${opcionesSucursal}</select>
           <button class="btn btn-danger btn-sm" data-revocar="${p.id}">Revocar acceso</button>
         </div>`;
     } else {
@@ -1100,16 +1133,41 @@ async function renderUsuarios() {
         <td>${escapeHtml(p.email)}</td>
         <td>${awFormatDateTime(p.created_at)}</td>
         <td><span class="badge ${p.estado === 'activo' ? 'pagado' : p.estado === 'rechazado' ? 'pendiente' : 'pendiente'}">${AW_ESTADO_PERFIL_LABELS[p.estado] || p.estado}</span></td>
-        <td>${AW_ROL_LABELS[p.rol] || p.rol}</td>
+        <td>${AW_ROL_LABELS[p.rol] || p.rol}${p.rol === 'cajero' ? `<br><span class="hint">📍 ${escapeHtml(awNombreSucursal(p.sucursal_id))}</span>` : ''}</td>
         <td>${acciones}</td>
       </tr>
     `;
   }).join('');
 
+  // Mostrar/ocultar el select de sucursal según el nivel elegido
+  tbody.querySelectorAll('[data-nivel-nuevo]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const selSucursal = tbody.querySelector(`[data-sucursal-nueva="${sel.dataset.nivelNuevo}"]`);
+      if (selSucursal) selSucursal.style.display = sel.value === 'cajero' ? '' : 'none';
+    });
+  });
+  tbody.querySelectorAll('[data-cambiar-rol]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const selSucursal = tbody.querySelector(`[data-cambiar-sucursal="${sel.dataset.cambiarRol}"]`);
+      if (selSucursal) selSucursal.style.display = sel.value === 'cajero' ? '' : 'none';
+      const cambios = { rol: sel.value };
+      if (sel.value === 'cajero' && selSucursal) cambios.sucursal_id = selSucursal.value;
+      const ok = await awActualizarPerfil(sel.dataset.cambiarRol, cambios);
+      showToast(ok ? 'Nivel actualizado' : 'No se pudo actualizar');
+      if (!ok) await renderUsuarios();
+    });
+  });
+
   tbody.querySelectorAll('[data-aceptar]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const sel = tbody.querySelector(`[data-nivel-nuevo="${btn.dataset.aceptar}"]`);
-      const ok = await awActualizarPerfil(btn.dataset.aceptar, { estado: 'activo', rol: sel.value });
+      const selSucursal = tbody.querySelector(`[data-sucursal-nueva="${btn.dataset.aceptar}"]`);
+      if (sel.value === 'cajero' && (!selSucursal || !selSucursal.value)) {
+        showToast('Selecciona la sucursal del cajero'); return;
+      }
+      const cambios = { estado: 'activo', rol: sel.value };
+      if (sel.value === 'cajero') cambios.sucursal_id = selSucursal.value;
+      const ok = await awActualizarPerfil(btn.dataset.aceptar, cambios);
       showToast(ok ? 'Usuario aceptado' : 'No se pudo actualizar');
       await renderUsuarios();
     });
@@ -1137,13 +1195,6 @@ async function renderUsuarios() {
       const ok = await awActualizarPerfil(btn.dataset.reactivar, { estado: 'activo' });
       showToast(ok ? 'Usuario reactivado' : 'No se pudo actualizar');
       await renderUsuarios();
-    });
-  });
-  tbody.querySelectorAll('[data-cambiar-rol]').forEach(sel => {
-    sel.addEventListener('change', async () => {
-      const ok = await awActualizarPerfil(sel.dataset.cambiarRol, { rol: sel.value });
-      showToast(ok ? 'Nivel actualizado' : 'No se pudo actualizar');
-      if (!ok) await renderUsuarios();
     });
   });
 }

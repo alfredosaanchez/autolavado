@@ -898,16 +898,10 @@ footer.small-print{
         </div>
 
         <div class="form-section">
-          <div class="section-eyebrow">Servicio de lavado</div>
-          <div class="field">
-            <label for="servicioSelect">Tipo de servicio *</label>
-            <select id="servicioSelect" required></select>
-            <div class="hint" id="servicioPrecioHint"></div>
-          </div>
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:.85rem; color:var(--ink); margin-top:8px;">
-            <input type="checkbox" id="cuponToggle" style="width:16px; height:16px; cursor:pointer;">
-            🎟️ Activar Cupón del 50% (solo sobre el servicio)
-          </label>
+          <div class="section-eyebrow">Servicios de lavado</div>
+          <div id="serviciosFilas"></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnAddServicioFila">+ Agregar servicio</button>
+          <div class="hint" id="servicioPrecioHint" style="margin-top:8px;"></div>
         </div>
 
         <div class="form-section">

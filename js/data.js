@@ -206,7 +206,7 @@ function awMapRegistroFromDb(row) {
     estado: row.estado,
     cliente: row.cliente,
     carro: row.carro,
-    servicio: row.servicio,
+    servicios: Array.isArray(row.servicio) ? row.servicio : (row.servicio ? [row.servicio] : []),
     bebidas: row.bebidas,
     periquitos: row.periquitos || { descripcion: '', monto: 0, moneda: 'Bs' },
     pago: row.pago,
@@ -226,7 +226,7 @@ async function awAddRegistro(registro) {
     estado: registro.estado,
     cliente: registro.cliente,
     carro: registro.carro,
-    servicio: registro.servicio,
+    servicio: registro.servicios,
     bebidas: registro.bebidas,
     periquitos: registro.periquitos,
     pago: registro.pago,
@@ -358,6 +358,11 @@ async function awVenderArticuloInventario(id, cantidad) {
 
 /* Texto legible de Periquitos vendidos. Soporta el formato nuevo (array de artículos
    del inventario) y el formato viejo (texto libre + monto) para tickets antiguos. */
+function awServiciosATexto(servicios) {
+  if (!Array.isArray(servicios) || servicios.length === 0) return '—';
+  return servicios.map(s => `${s.nombre}${s.cuponAplicado ? ' 🎟️-50%' : ''}`).join(', ');
+}
+
 function awPeriquitosATexto(periquitos) {
   if (Array.isArray(periquitos)) {
     return periquitos.filter(p => p.cantidad > 0).map(p => `${p.cantidad}× ${p.codigo} ${p.descripcion}`).join(', ') || 'Ninguno';
