@@ -527,7 +527,15 @@ function bindMetodoPago() {
 }
 
 function updateReferenciaVisibility() {
-  const metodo = document.querySelector('input[name="metodoPago"]:checked').value;
+  const metodoPagoSeleccionado =
+    document.querySelector('input[name="metodoPago"]:checked');
+
+if (!metodoPagoSeleccionado) {
+    alert("Debe seleccionar un método de pago.");
+    return;
+}
+
+const metodoPago = metodoPagoSeleccionado.value;
   const wrap = document.getElementById('referenciaWrap');
   const refInput = document.getElementById('referenciaPago');
   if (metodo === 'pendiente' || metodo === 'efectivo') {
@@ -824,7 +832,6 @@ function imprimirTicket(id) {
         <tr><td class="lbl">Periquitos</td><td class="val">${escapeHtml(periquitosTxt)}</td></tr>
         <tr><td class="lbl">Lavador</td><td class="val">${escapeHtml(r.lavador.nombre)}</td></tr>
         <tr><td class="lbl">Propina</td><td class="val">${propinaTxt}</td></tr>
-        <tr><td class="lbl">Observaciones</td><td class="val">${r.observaciones}</td></tr>
       </table>
       <hr>
       <table>
