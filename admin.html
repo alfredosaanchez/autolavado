@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Venta Falcon Auto Motor — Panel administrativo</title>
+<title>Venta Falcon Auto Motor — Registro</title>
 <style>
 /* =========================================================
    Venta Falcon Auto Motor — Sistema de registro y panel administrativo
@@ -755,38 +755,34 @@ footer.small-print{
   <a href="index.html" class="brand"><img src="img/logo.png" alt="Venta Falcon" style="height:80px; width:auto;"> Venta Falcon <span style="color:var(--primary);">Auto Motor</span></a>
   <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
     <div class="nav-links" style="align-items:center;">
-      <a href="index.html">Registro</a>
-      <a href="admin.html" class="active">Panel admin</a>
+      <a href="index.html" class="active">Registro</a>
+      <a href="admin.html">Panel admin</a>
       <span id="logoutEmail" style="color:rgba(255,255,255,0.75); font-size:.8rem; margin-left:8px; display:none;"></span>
       <button id="logoutBtn" class="btn btn-ghost btn-sm" style="display:none; margin-left:8px; background:transparent; border-color:rgba(255,255,255,0.4); color:#fff;">Cerrar sesión</button>
     </div>
-    <div id="sucursalWidgetAdmin" style="display:none; align-items:center; gap:6px; font-size:.78rem; color:rgba(255,255,255,0.9);">
-      Sucursal:
-      <select id="sucursalSelectAdmin" style="padding:4px 6px; border-radius:6px; border:none; font-size:.75rem;">
-        <option value="todas">Todas</option>
-      </select>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div id="sucursalWidgetFijo" style="display:none; font-size:.75rem; color:rgba(255,255,255,0.85);">
+        Sucursal: <strong id="sucursalFijaTxt" style="color:var(--primary);"></strong>
+      </div>
+      <div id="sucursalWidgetSelect" style="display:none; align-items:center; gap:6px; font-size:.75rem; color:rgba(255,255,255,0.85);">
+        Sucursal:
+        <select id="sucursalSelect" style="padding:4px 6px; border-radius:6px; border:none; font-size:.75rem;"></select>
+      </div>
+      <div style="font-size:.75rem; color:rgba(255,255,255,0.85); font-family:var(--font-mono);">
+        Tasa: <strong id="tasaDisplay">Bs 1,00</strong> / $
+      </div>
     </div>
-    <div id="tasaWidget" style="display:none; align-items:center; gap:6px; font-size:.78rem; color:rgba(255,255,255,0.9); font-family:var(--font-mono);">
-      Tasa: Bs
-      <input type="number" id="tasaInput" min="0" step="0.01" style="width:80px; padding:4px 6px; border-radius:6px; border:none; font-family:var(--font-mono);">
-      / $
-      <button id="btnGuardarTasa" class="btn btn-accent btn-sm" style="padding:4px 10px; font-size:.72rem;">Guardar</button>
-    </div>
-    <label id="fechaPasadaWidget" style="display:none; align-items:center; gap:6px; font-size:.75rem; color:rgba(255,255,255,0.85); cursor:pointer;">
-      <input type="checkbox" id="fechaPasadaToggle" style="width:16px; height:16px; cursor:pointer;">
-      🗓️ Permitir fecha pasada en Registro
-    </label>
   </div>
 </nav>
 
 <!-- ===== Pantalla de login / registro ===== -->
-<div id="loginScreen" style="display:flex; min-height:70vh; align-items:center; justify-content:center; padding:20px;">
+<div id="loginScreen" style="display:none; min-height:70vh; align-items:center; justify-content:center; padding:20px;">
   <div class="card" style="max-width:380px; width:100%;">
 
     <div id="loginModeLogin">
       <div class="page-head" style="margin-bottom:18px;">
-        <h1 style="font-size:1.2rem;">Acceso al panel</h1>
-        <p>Inicia sesión con tu usuario administrador.</p>
+        <h1 style="font-size:1.2rem;">Iniciar sesión</h1>
+        <p>Entra con tu usuario para registrar lavados.</p>
       </div>
       <form id="form-login">
         <div class="field">
@@ -811,7 +807,7 @@ footer.small-print{
     <div id="loginModeRegistro" style="display:none;">
       <div class="page-head" style="margin-bottom:18px;">
         <h1 style="font-size:1.2rem;">Crear cuenta</h1>
-        <p>Después de registrarte, el administrador debe aprobar tu acceso.</p>
+        <p>Después de registrarte, el Dueño debe aprobar tu acceso y asignarte una sucursal.</p>
       </div>
       <form id="form-registro-usuario">
         <div class="field">
@@ -833,7 +829,7 @@ footer.small-print{
     <div id="loginModeRegistroOk" style="display:none; text-align:center;">
       <div style="font-size:2rem; margin-bottom:10px;">✅</div>
       <h1 style="font-size:1.1rem; color:var(--primary-dark);">Cuenta creada</h1>
-      <p class="hint">Contacta con soporte para que validen tu registro.</p>
+      <p class="hint">Contacta al Dueño para que apruebe tu acceso y te asigne sucursal.</p>
       <button class="btn btn-ghost btn-sm" id="btnVolverLoginDesdeOk" style="margin-top:14px;">Volver al inicio de sesión</button>
     </div>
 
@@ -845,259 +841,215 @@ footer.small-print{
   <div class="card" style="max-width:380px; width:100%; text-align:center;">
     <div style="font-size:2rem; margin-bottom:10px;">⏳</div>
     <h1 style="font-size:1.1rem; color:var(--primary-dark);">Cuenta pendiente de aprobación</h1>
-    <p class="hint">Tu acceso todavía no ha sido aprobado. Contacta con soporte para que validen tu registro.</p>
+    <p class="hint">Tu acceso todavía no ha sido aprobado. Contacta al Dueño para que lo apruebe y te asigne sucursal.</p>
     <button class="btn btn-ghost btn-sm" id="btnCerrarSesionPendiente" style="margin-top:14px;">Cerrar sesión</button>
   </div>
 </div>
 
-<div id="adminContent" style="display:none;">
+<div id="registroContent" style="display:block;">
 
 <div class="page">
   <div class="page-head">
-    <h1>Panel administrativo</h1>
-    <p>Consulta ingresos, pendientes, comisiones y configura servicios y lavadores.</p>
+    <h1>Nuevo registro de lavado</h1>
+    <p>Completa los datos del cliente, el servicio y el pago. Si el cliente no pagó, marca el método como "Pendiente".</p>
+
   </div>
 
-  <div class="admin-shell">
-    <div class="admin-tabs">
-      <button class="admin-tab-btn active" data-tab="resumen">📊 Resumen</button>
-      <button class="admin-tab-btn" data-tab="registros">🧾 Registros</button>
-      <button class="admin-tab-btn" data-tab="gastos">💸 Gastos</button>
-      <button class="admin-tab-btn" data-tab="inventario">📦 Inventario</button>
-      <button class="admin-tab-btn" data-tab="servicios">🧼 Servicios</button>
-      <button class="admin-tab-btn" data-tab="bebidas">🥤 Bebidas y Snacks</button>
-      <button class="admin-tab-btn" data-tab="lavadores">👤 Lavadores</button>
-      <button class="admin-tab-btn" data-tab="usuarios" id="tabBtnUsuarios" style="display:none;">👥 Usuarios</button>
-    </div>
+  <div class="grid-2">
+    <!-- ============ FORMULARIO ============ -->
+    <div class="card">
+      <form id="form-registro">
 
-    <div>
-      <!-- Filtros comunes -->
-      <div class="filters-bar">
-        <div class="field">
-          <label for="filtroDesde">Desde</label>
-          <input type="date" id="filtroDesde">
-        </div>
-        <div class="field">
-          <label for="filtroHasta">Hasta</label>
-          <input type="date" id="filtroHasta">
-        </div>
-        <div class="field">
-          <label for="filtroEstado">Estado</label>
-          <select id="filtroEstado">
-            <option value="">Todos</option>
-            <option value="PAGADO">Pagado</option>
-            <option value="PENDIENTE">Pendiente</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="filtroLavador">Lavador</label>
-          <select id="filtroLavador"><option value="">Todos</option></select>
-        </div>
-        <div class="field">
-          <label for="filtroServicio">Servicio</label>
-          <select id="filtroServicio"><option value="">Todos</option></select>
-        </div>
-        <button class="btn btn-ghost btn-sm" id="btnLimpiarFiltros">Limpiar filtros</button>
-      </div>
-
-      <!-- ===== Resumen ===== -->
-      <div class="admin-panel active" id="panel-resumen">
-        <div class="kpi-grid" id="kpiGrid"></div>
-
-        <div class="manager-head"><h2>Clientes con pago pendiente</h2></div>
-        <div class="table-wrap" style="margin-bottom:26px;">
-          <table>
-            <thead>
-              <tr><th>Cliente</th><th>Teléfono</th><th>Carro</th><th>Servicio</th><th>Monto</th><th>Fecha</th></tr>
-            </thead>
-            <tbody id="tablaPendientes"></tbody>
-          </table>
-        </div>
-
-        <div class="manager-head"><h2>Comisiones por lavador</h2></div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Lavador</th><th># Lavados</th><th>Total generado</th><th>Comisión estimada</th><th>Propina</th></tr>
-            </thead>
-            <tbody id="tablaComisiones"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- ===== Registros ===== -->
-      <div class="admin-panel" id="panel-registros">
-        <div class="manager-head">
-          <h2>Todos los registros</h2>
-          <div style="display:flex; align-items:center; gap:12px;">
-            <span class="hint" id="registrosCount"></span>
-            <button class="btn btn-ghost btn-sm" id="btnExportarCsv">⬇️ Exportar CSV</button>
+        <div class="form-section" id="fechaPasadaSection" style="display:none;">
+          <div class="section-eyebrow">Fecha del lavado</div>
+          <div class="field">
+            <label for="fechaRegistroPasada">Fecha (dejar en blanco = ahora mismo)</label>
+            <input type="date" id="fechaRegistroPasada">
+            <div class="hint">Activado temporalmente por el Dueño para poner al día registros atrasados.</div>
           </div>
         </div>
-        <div class="field" style="margin-bottom:14px; max-width:420px;">
-          <input type="text" id="buscadorRegistrosAdmin" placeholder="🔎 Buscar por cliente, teléfono, carro, servicio, lavador, referencia, observación...">
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Fecha</th><th>Cliente</th><th>Teléfono</th><th>Carro</th><th>Servicio</th>
-                <th>Bebidas</th><th>Periquitos</th><th>Método</th><th>Referencia</th><th>Monto</th>
-                <th>Lavador</th><th>%</th><th>Comisión</th><th>Propina</th><th>Estado</th><th>Observaciones</th><th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody id="tablaRegistros"></tbody>
-          </table>
-        </div>
-      </div>
 
-      <!-- ===== Gastos ===== -->
-      <div class="admin-panel" id="panel-gastos">
-        <div class="manager-head"><h2>Registrar gasto</h2></div>
-        <div class="card" style="margin-bottom:22px;">
-          <form id="form-gasto">
-            <div class="field-row">
-              <div class="field">
-                <label for="gastoFecha">Fecha</label>
-                <input type="date" id="gastoFecha" required>
-              </div>
-              <div class="field">
-                <label for="gastoCategoria">Categoría (opcional)</label>
-                <input type="text" id="gastoCategoria" placeholder="Ej: Insumos, Nómina, Servicios...">
-              </div>
+        <div class="form-section">
+          <div class="section-eyebrow">Cliente</div>
+          <div class="field-row">
+            <div class="field">
+              <label for="clienteNombre">Nombre del cliente *</label>
+              <input type="text" id="clienteNombre" required placeholder="Ej: María Pérez">
             </div>
             <div class="field">
-              <label for="gastoDescripcion">Descripción *</label>
-              <input type="text" id="gastoDescripcion" required placeholder="Ej: Compra de shampoo y cera">
+              <label for="clienteTelefono">Teléfono *</label>
+              <input type="tel" id="clienteTelefono" required placeholder="0414-0000000">
             </div>
-            <div class="field-row">
-              <div class="field">
-                <label for="gastoMonto">Monto *</label>
-                <input type="number" id="gastoMonto" min="0" step="0.01" required placeholder="0.00">
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-eyebrow">Vehículo</div>
+          <div class="field-row">
+            <div class="field">
+              <label for="carroModelo">Carro (marca / modelo) *</label>
+              <input type="text" id="carroModelo" required placeholder="Ej: Toyota Corolla">
+            </div>
+            <div class="field">
+              <label for="carroColor">Color *</label>
+              <input type="text" id="carroColor" required placeholder="Ej: Gris">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-eyebrow">Servicios de lavado</div>
+          <div id="serviciosFilas"></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnAddServicioFila">+ Agregar servicio</button>
+          <div class="hint" id="servicioPrecioHint" style="margin-top:8px;"></div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-eyebrow">Bebidas y Snacks consumidos</div>
+          <div class="drink-grid" id="drinkGrid">
+            <div class="hint">Cargando…</div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-eyebrow">Periquitos</div>
+          <div id="periquitosFilas"></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnAddPeriquito">+ Agregar artículo</button>
+        </div>
+
+        <div class="form-section">
+          <div class="section-eyebrow">Resumen de cobro</div>
+          <div class="resumen-cobro" id="resumenCobro">
+            <div class="resumen-linea">
+              <span>Servicio</span>
+              <span id="resumenServicioTxt">—</span>
+            </div>
+            <div class="resumen-linea" id="resumenBebidasLinea" style="display:none;">
+              <span>Bebidas</span>
+              <span id="resumenBebidasTxt">—</span>
+            </div>
+            <div class="resumen-linea" id="resumenPeriquitosLinea" style="display:none;">
+              <span>Periquitos</span>
+              <span id="resumenPeriquitosTxt">—</span>
+            </div>
+            <div class="resumen-divider"></div>
+            <div class="resumen-total">
+              <div>
+                <span class="resumen-total-label">Total Bs</span>
+                <span class="resumen-total-val" id="resumenTotalBs">Bs 0,00</span>
               </div>
-              <div class="field">
-                <label for="gastoMoneda">Moneda *</label>
-                <select id="gastoMoneda" required>
-                  <option value="Bs">Bolívares (Bs)</option>
-                  <option value="USD">Dólares ($)</option>
-                </select>
+              <div>
+                <span class="resumen-total-label">Total $</span>
+                <span class="resumen-total-val" id="resumenTotalUsd">$ 0,00</span>
               </div>
             </div>
-            <button type="submit" class="btn btn-primary">+ Registrar gasto</button>
-          </form>
+          </div>
+          <div class="hint">Se calcula solo, según los precios configurados en el panel admin. Sirve igual para saber cuánto cobrar, pague el cliente de una vez o quede pendiente.</div>
         </div>
 
-        <div class="manager-head">
-          <h2>Historial de gastos</h2>
-          <div class="hint" id="gastosResumenTxt"></div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Monto</th><th>Acciones</th></tr>
-            </thead>
-            <tbody id="tablaGastos"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- ===== Inventario (Periquitos) ===== -->
-      <div class="admin-panel" id="panel-inventario">
-        <div class="manager-head">
-          <h2>Inventario (Periquitos)</h2>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button class="btn btn-ghost btn-sm" id="btnDescargarPlantilla">📄 Descargar plantilla</button>
-            <button class="btn btn-ghost btn-sm" id="btnCargaMasiva">📥 Carga masiva</button>
-            <input type="file" id="inputCargaMasiva" accept=".csv,.xlsx,.xls" style="display:none;">
-            <button class="btn btn-ghost btn-sm" id="btnAddInventario">+ Agregar artículo</button>
-            <button class="btn btn-primary btn-sm" id="btnGuardarInventario">💾 Guardar cambios</button>
+        <div class="form-section">
+          <div class="section-eyebrow">Pago</div>
+          <div class="field">
+            <label>Método de pago *</label>
+            <div class="segmented" id="metodoPagoGroup">
+              <input type="radio" name="metodoPago" id="metodo-efectivo" value="efectivo">
+              <label for="metodo-efectivo">Efectivo</label>
+              <input type="radio" name="metodoPago" id="metodo-punto" value="punto">
+              <label for="metodo-punto">Punto de venta</label>
+              <input type="radio" name="metodoPago" id="metodo-movil" value="movil">
+              <label for="metodo-movil">Pago móvil</label>
+              <input type="radio" name="metodoPago" id="metodo-pendiente" value="pendiente">
+              <label for="metodo-pendiente">Pendiente</label>
+            </div>
+          </div>
+          <div class="field-row thirds">
+            <div class="field">
+              <label for="monedaPago">Moneda *</label>
+              <select id="monedaPago" required>
+                <option value="Bs">Bolívares (Bs)</option>
+                <option value="USD">Dólares ($)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="montoTotal">Monto total *</label>
+              <input type="number" id="montoTotal" min="0" step="0.01" required placeholder="0.00">
+            </div>
+            <div class="field" id="referenciaWrap">
+              <label for="referenciaPago">Referencia de pago</label>
+              <input type="text" id="referenciaPago" placeholder="N.º de referencia">
+            </div>
           </div>
         </div>
-        <div class="hint" id="cargaMasivaResultado" style="margin-bottom:12px;"></div>
-        <div class="manage-list" id="listaInventario"></div>
-      </div>
 
-      <!-- ===== Servicios ===== -->
-      <div class="admin-panel" id="panel-servicios">
-        <div class="manager-head">
-          <h2>Tipos de servicio</h2>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-ghost btn-sm" id="btnAddServicio">+ Agregar servicio</button>
-            <button class="btn btn-primary btn-sm" id="btnGuardarServicios">💾 Guardar cambios</button>
+        <div class="form-section">
+          <div class="section-eyebrow">Lavador</div>
+          <div class="field-row">
+            <div class="field">
+              <label for="lavadorSelect">¿Quién lavó el carro? *</label>
+              <select id="lavadorSelect" required></select>
+            </div>
+            <div class="field">
+              <label for="porcentajeLavador">Porcentaje del lavador (%) *</label>
+              <input type="number" id="porcentajeLavador" min="0" max="100" step="0.01" required placeholder="Ej: 40 o 37.5">
+            </div>
           </div>
         </div>
-        <div class="manage-list" id="listaServicios"></div>
-      </div>
 
-      <!-- ===== Bebidas y Snacks ===== -->
-      <div class="admin-panel" id="panel-bebidas">
-        <div class="manager-head">
-          <h2>Bebidas y Snacks</h2>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-ghost btn-sm" id="btnAddBebida">+ Agregar artículo</button>
-            <button class="btn btn-primary btn-sm" id="btnGuardarBebidas">💾 Guardar cambios</button>
+        <div class="form-section">
+          <div class="section-eyebrow">Propina (opcional)</div>
+          <div class="field-row thirds">
+            <div class="field">
+              <label for="propinaMonto">Monto de propina</label>
+              <input type="number" id="propinaMonto" min="0" step="0.01" placeholder="0.00">
+            </div>
+            <div class="field">
+              <label for="propinaMoneda">Moneda de propina</label>
+              <select id="propinaMoneda">
+                <option value="Bs">Bolívares (Bs)</option>
+                <option value="USD">Dólares ($)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="propinaReferencia">Referencia de propina</label>
+              <input type="text" id="propinaReferencia" placeholder="N.º de referencia">
+            </div>
           </div>
         </div>
-        <div class="manage-list" id="listaBebidas"></div>
-      </div>
 
-      <!-- ===== Lavadores ===== -->
-      <div class="admin-panel" id="panel-lavadores">
-        <div class="manager-head">
-          <h2>Lavadores</h2>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-ghost btn-sm" id="btnAddLavador">+ Agregar lavador</button>
-            <button class="btn btn-primary btn-sm" id="btnGuardarLavadores">💾 Guardar cambios</button>
+        <div class="form-section">
+          <div class="section-eyebrow">Observaciones (opcional)</div>
+          <div class="field">
+            <textarea id="observacionesTexto" rows="2" placeholder="Alguna nota sobre este lavado..." style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--radius-sm); background:#181818; color:var(--ink); resize:vertical;"></textarea>
           </div>
         </div>
-        <div class="manage-list" id="listaLavadores"></div>
-      </div>
 
-      <!-- ===== Usuarios (solo Dueño) ===== -->
-      <div class="admin-panel" id="panel-usuarios">
-        <div class="manager-head"><h2>Usuarios y niveles</h2></div>
-        <div class="card" style="margin-bottom:20px;">
-          <div class="section-eyebrow">Niveles</div>
-          <p class="hint" style="margin:0;">
-            <strong>Dueño:</strong> acceso total, incluyendo gestionar usuarios y la tasa.<br>
-            <strong>Gerente:</strong> ve y edita todo el panel, menos Usuarios y la tasa (la ve, no la edita).<br>
-            <strong>Cajero:</strong> solo ve la pestaña Resumen (sin editar), pero sí puede modificar la tasa.
-          </p>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Correo</th><th>Registrado</th><th>Estado</th><th>Nivel</th><th>Acciones</th></tr>
-            </thead>
-            <tbody id="tablaUsuarios"></tbody>
-          </table>
-        </div>
-      </div>
+        <button type="submit" class="btn btn-primary btn-block">Registrar lavado</button>
+      </form>
     </div>
-  </div>
-</div>
-</div>
 
-<!-- Modal de confirmación (eliminar) -->
-<div class="modal-backdrop" id="modalConfirm">
-  <div class="modal">
-    <h3>¿Eliminar este registro?</h3>
-    <p id="modalConfirmText">Esta acción no se puede deshacer.</p>
-    <div class="modal-actions">
-      <button class="btn btn-ghost btn-sm" id="modalCancelBtn">Cancelar</button>
-      <button class="btn btn-danger btn-sm" id="modalOkBtn">Eliminar</button>
+    <!-- ============ TICKETS DEL DÍA ============ -->
+    <div>
+      <div class="tickets-head">
+        <h2>Tickets de hoy</h2>
+        <span class="count" id="ticketsCount">0 registros</span>
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <input type="text" id="buscadorTickets" placeholder="🔎 Buscar por cliente o vehículo...">
+      </div>
+      <div class="ticket-list" id="ticketList"></div>
     </div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
+</div>
+
 <footer class="small-print">Venta Falcon Auto Motor · ajss2026</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/data.js"></script>
-<script src="js/admin.js"></script>
+<script src="js/registro.js"></script>
 </body>
 </html>
