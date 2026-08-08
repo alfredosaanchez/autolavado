@@ -467,7 +467,11 @@ function renderResumen(registros) {
 
   const tablaPendientes = document.getElementById('tablaPendientes');
   if (tablaPendientes) {
-    tablaPendientes.innerHTML = pendientes.length ? pendientes.map(r => `
+    tablaPendientes.innerHTML = pendientes.length ? pendientes.map(r => {
+      const costoTotal = awCostoTotalRegistro(r);
+      const saldoBs = Math.max(0, costoTotal.bs - r.pago.montoBs);
+      const saldoUsd = Math.max(0, costoTotal.usd - r.pago.montoUsd);
+      return `
       <tr>
         <td>${escapeHtml(r.cliente.nombre)}</td>
         <td>${escapeHtml(r.cliente.telefono)}</td>
@@ -475,8 +479,49 @@ function renderResumen(registros) {
         <td>${escapeHtml(awServiciosATexto(r.servicios))}</td>
         <td>${awFormatMoney(r.pago.monto, r.pago.moneda)}</td>
         <td>${awFormatDateTime(r.fecha)}</td>
+        <td>
+          <button class="btn btn-accent btn-sm" data-toggle-pago-admin="${r.id}">💳 Completar pago</button>
+          <div class="inline-pay-form" id="pago-admin-form-${r.id}">
+            <div class="field-row thirds">
+              <div class="field">
+                <label>Método</label>
+                <select id="pago-admin-metodo-${r.id}">
+                  <option value="efectivo">Efectivo</option>
+                  <option value="punto">Punto de venta</option>
+                  <option value="movil">Pago móvil</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Moneda</label>
+                <select id="pago-admin-moneda-${r.id}">
+                  <option value="Bs" ${r.pago.moneda === 'Bs' ? 'selected' : ''}>Bs</option>
+                  <option value="USD" ${r.pago.moneda === 'USD' ? 'selected' : ''}>$</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Monto (saldo: ${awFormatMoney(saldoBs, 'Bs')} / ${awFormatMoney(saldoUsd, 'USD')})</label>
+                <input type="number" id="pago-admin-monto-${r.id}" value="${r.pago.moneda === 'USD' ? saldoUsd.toFixed(2) : saldoBs.toFixed(2)}" step="0.01" min="0">
+              </div>
+            </div>
+            <div class="field">
+              <label>Referencia</label>
+              <input type="text" id="pago-admin-ref-${r.id}" placeholder="N.º de referencia">
+            </div>
+            <button class="btn btn-primary btn-sm" data-confirm-pago-admin="${r.id}">Confirmar</button>
+          </div>
+        </td>
       </tr>
-    `).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:20px;">No hay clientes con pago pendiente 🎉</td></tr>`;
+    `;
+    }).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:20px;">No hay clientes con pago pendiente 🎉</td></tr>`;
+
+    tablaPendientes.querySelectorAll('[data-toggle-pago-admin]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById(`pago-admin-form-${btn.dataset.togglePagoAdmin}`).classList.toggle('open');
+      });
+    });
+    tablaPendientes.querySelectorAll('[data-confirm-pago-admin]').forEach(btn => {
+      btn.addEventListener('click', () => confirmarPagoDesdeAdmin(btn.dataset.confirmPagoAdmin));
+    });
   }
 
   /* Comisiones + propina por lavador */
@@ -509,6 +554,26 @@ function renderResumen(registros) {
 }
 
 function sumBy(arr, fn) { return arr.reduce((acc, x) => acc + (fn(x) || 0), 0); }
+
+async function confirmarPagoDesdeAdmin(id) {
+  const metodo = document.getElementById(`pago-admin-metodo-${id}`).value;
+  const moneda = document.getElementById(`pago-admin-moneda-${id}`).value;
+  const monto = parseFloat(document.getElementById(`pago-admin-monto-${id}`).value) || 0;
+  const referencia = document.getElementById(`pago-admin-ref-${id}`).value.trim();
+  const conv = awConvertir(monto, moneda, awTasaCache);
+
+  const registroActual = awRegistrosCache.find(r => r.id === id);
+  const costoTotal = registroActual ? awCostoTotalRegistro(registroActual) : { bs: 0, usd: 0 };
+  const costoEnMoneda = moneda === 'USD' ? costoTotal.usd : costoTotal.bs;
+  const nuevoEstado = monto >= (costoEnMoneda - 0.01) ? 'PAGADO' : 'PENDIENTE';
+
+  const ok = await awUpdateRegistro(id, {
+    estado: nuevoEstado,
+    pago: { metodo, moneda, monto, montoBs: conv.bs, montoUsd: conv.usd, referencia, tasaUsada: awTasaCache }
+  });
+  showToast(ok ? (nuevoEstado === 'PAGADO' ? 'Pago completado' : 'Abono registrado — todavía queda pendiente') : 'No se pudo actualizar');
+  await renderAll();
+}
 
 /* ---------- Tabla de registros ---------- */
 function renderTablaRegistros(registros) {
@@ -1122,7 +1187,6 @@ async function renderUsuarios() {
             ${AW_ROLES_DISPONIBLES.map(r => `<option value="${r}" ${r === p.rol ? 'selected' : ''}>${AW_ROL_LABELS[r]}</option>`).join('')}
           </select>
           <select data-cambiar-sucursal="${p.id}" style="${p.rol === 'cajero' ? '' : 'display:none;'}">${opcionesSucursal}</select>
-          <button class="btn btn-primary btn-sm" data-guardar-cambios="${p.id}">💾 Guardar cambios</button>
           <button class="btn btn-danger btn-sm" data-revocar="${p.id}">Revocar acceso</button>
         </div>`;
     } else {
@@ -1148,30 +1212,14 @@ async function renderUsuarios() {
     });
   });
   tbody.querySelectorAll('[data-cambiar-rol]').forEach(sel => {
-    sel.addEventListener('change', () => {
+    sel.addEventListener('change', async () => {
       const selSucursal = tbody.querySelector(`[data-cambiar-sucursal="${sel.dataset.cambiarRol}"]`);
       if (selSucursal) selSucursal.style.display = sel.value === 'cajero' ? '' : 'none';
-    });
-  });
-
-  tbody.querySelectorAll('[data-guardar-cambios]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.guardarCambios;
-      const selRol = tbody.querySelector(`[data-cambiar-rol="${id}"]`);
-      const selSucursal = tbody.querySelector(`[data-cambiar-sucursal="${id}"]`);
-      const cambios = { rol: selRol.value };
-      if (selRol.value === 'cajero') {
-        if (!selSucursal || !selSucursal.value) {
-          showToast('Selecciona la sucursal del cajero');
-          return;
-        }
-        cambios.sucursal_id = selSucursal.value;
-      } else {
-        cambios.sucursal_id = null;
-      }
-      const ok = await awActualizarPerfil(id, cambios);
-      showToast(ok ? 'Cambios guardados' : 'No se pudo actualizar');
-      await renderUsuarios();
+      const cambios = { rol: sel.value };
+      if (sel.value === 'cajero' && selSucursal) cambios.sucursal_id = selSucursal.value;
+      const ok = await awActualizarPerfil(sel.dataset.cambiarRol, cambios);
+      showToast(ok ? 'Nivel actualizado' : 'No se pudo actualizar');
+      if (!ok) await renderUsuarios();
     });
   });
 

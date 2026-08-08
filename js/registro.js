@@ -527,23 +527,16 @@ function bindMetodoPago() {
 }
 
 function updateReferenciaVisibility() {
-  const metodoPagoSeleccionado =
-    document.querySelector('input[name="metodoPago"]:checked');
-
-if (!metodoPagoSeleccionado) {
-    alert("Debe seleccionar un método de pago.");
-    return;
-}
-
-const metodoPago = metodoPagoSeleccionado.value;
+  const checked = document.querySelector('input[name="metodoPago"]:checked');
+  const metodo = checked ? checked.value : '';
   const wrap = document.getElementById('referenciaWrap');
   const refInput = document.getElementById('referenciaPago');
-  if (metodo === 'pendiente' || metodo === 'efectivo') {
-    wrap.style.opacity = '0.5';
-    refInput.removeAttribute('required');
-  } else {
+  if (metodo === 'punto' || metodo === 'movil') {
     wrap.style.opacity = '1';
     refInput.setAttribute('required', 'required');
+  } else {
+    wrap.style.opacity = '0.5';
+    refInput.removeAttribute('required');
   }
 }
 
@@ -554,7 +547,14 @@ async function onSubmitRegistro(e) {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Guardando…';
 
-  const metodo = document.querySelector('input[name="metodoPago"]:checked').value;
+  const metodoChecked = document.querySelector('input[name="metodoPago"]:checked');
+  if (!metodoChecked) {
+    showToast('Selecciona un método de pago');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Registrar lavado';
+    return;
+  }
+  const metodo = metodoChecked.value;
   const serviciosFilas = leerFilasServicios();
   const lavadorId = document.getElementById('lavadorSelect').value;
   const lavador = awLavadoresCache.find(l => l.id === lavadorId);
@@ -578,6 +578,27 @@ async function onSubmitRegistro(e) {
     fechaFinal = new Date(anio, mes - 1, dia, ahora.getHours(), ahora.getMinutes(), ahora.getSeconds()).toISOString();
   }
 
+  const bebidasArr = awBebidasSnacksCache
+    .filter(item => (awDrinkCounts[item.id] || 0) > 0)
+    .map(item => ({
+      id: item.id,
+      nombre: item.nombre,
+      emoji: item.emoji,
+      cantidad: awDrinkCounts[item.id],
+      precioBs: awPrecioBsEfectivo(item, awTasaCache),
+      precioUsd: item.precioUsd
+    }));
+  const periquitosArr = leerFilasPeriquitos();
+
+  const costoTotal = awCostoTotalRegistro({ servicios: serviciosFilas, bebidas: bebidasArr, periquitos: periquitosArr });
+  const costoEnMoneda = monedaPago === 'USD' ? costoTotal.usd : costoTotal.bs;
+  let estadoFinal;
+  if (metodo === 'pendiente') {
+    estadoFinal = 'PENDIENTE';
+  } else {
+    estadoFinal = montoFinal >= (costoEnMoneda - 0.01) ? 'PAGADO' : 'PENDIENTE';
+  }
+
   const registro = {
     id: awUid(),
     fecha: fechaFinal,
@@ -590,17 +611,8 @@ async function onSubmitRegistro(e) {
       color: document.getElementById('carroColor').value.trim()
     },
     servicios: serviciosFilas,
-    bebidas: awBebidasSnacksCache
-      .filter(item => (awDrinkCounts[item.id] || 0) > 0)
-      .map(item => ({
-        id: item.id,
-        nombre: item.nombre,
-        emoji: item.emoji,
-        cantidad: awDrinkCounts[item.id],
-        precioBs: awPrecioBsEfectivo(item, awTasaCache),
-        precioUsd: item.precioUsd
-      })),
-    periquitos: leerFilasPeriquitos(),
+    bebidas: bebidasArr,
+    periquitos: periquitosArr,
     pago: {
       metodo: metodo,
       moneda: monedaPago,
@@ -617,7 +629,7 @@ async function onSubmitRegistro(e) {
       moneda: document.getElementById('propinaMoneda').value,
       referencia: document.getElementById('propinaReferencia').value.trim()
     },
-    estado: metodo === 'pendiente' ? 'PENDIENTE' : 'PAGADO',
+    estado: estadoFinal,
     sucursalId: awSucursalActivaId,
     cuponAplicado: serviciosFilas.some(f => f.cuponAplicado),
     observaciones: document.getElementById('observacionesTexto').value.trim()
@@ -634,7 +646,11 @@ async function onSubmitRegistro(e) {
   for (const f of registro.periquitos) {
     await awVenderArticuloInventario(f.id, f.cantidad);
   }
-  showToast(metodo === 'pendiente' ? 'Registrado como PENDIENTE' : 'Lavado registrado correctamente');
+  let mensajeFinal = 'Lavado registrado correctamente';
+  if (registro.estado === 'PENDIENTE') {
+    mensajeFinal = metodo === 'pendiente' ? 'Registrado como PENDIENTE' : '⚠️ Registrado como PENDIENTE (el monto no cubre el total)';
+  }
+  showToast(mensajeFinal);
   resetForm();
   await renderTickets();
 }
@@ -786,11 +802,16 @@ async function confirmarPago(id) {
   const referencia = document.getElementById(`pay-ref-${id}`).value.trim();
   const conv = awConvertir(monto, moneda, awTasaCache);
 
+  const registroActual = awTicketsHoyCache.find(t => t.id === id);
+  const costoTotal = registroActual ? awCostoTotalRegistro(registroActual) : { bs: 0, usd: 0 };
+  const costoEnMoneda = moneda === 'USD' ? costoTotal.usd : costoTotal.bs;
+  const nuevoEstado = monto >= (costoEnMoneda - 0.01) ? 'PAGADO' : 'PENDIENTE';
+
   const ok = await awUpdateRegistro(id, {
-    estado: 'PAGADO',
+    estado: nuevoEstado,
     pago: { metodo, moneda, monto, montoBs: conv.bs, montoUsd: conv.usd, referencia, tasaUsada: awTasaCache }
   });
-  showToast(ok ? 'Pago confirmado' : 'No se pudo actualizar. Intenta de nuevo.');
+  showToast(ok ? (nuevoEstado === 'PAGADO' ? 'Pago confirmado' : 'Abono registrado — todavía queda pendiente') : 'No se pudo actualizar. Intenta de nuevo.');
   await renderTickets();
 }
 

@@ -47,6 +47,27 @@ async function awSetTasa(nuevaTasa) {
 }
 
 /* ---------- Permitir fecha pasada (interruptor, solo Dueño) ---------- */
+/* Costo total "de verdad" de un registro (servicios con cupón + bebidas + periquitos),
+   usando los precios ya guardados en el ticket (no cambia aunque cambie la tasa después). */
+function awCostoTotalRegistro(r) {
+  let bs = 0, usd = 0;
+  (r.servicios || []).forEach(s => {
+    bs += (s.precioBsFinal !== undefined ? s.precioBsFinal : s.precioBs) || 0;
+    usd += (s.precioUsdFinal !== undefined ? s.precioUsdFinal : s.precioUsd) || 0;
+  });
+  const bebidas = Array.isArray(r.bebidas) ? r.bebidas : [];
+  bebidas.forEach(b => {
+    bs += (b.cantidad || 0) * (b.precioBs || 0);
+    usd += (b.cantidad || 0) * (b.precioUsd || 0);
+  });
+  const periquitos = Array.isArray(r.periquitos) ? r.periquitos : [];
+  periquitos.forEach(pq => {
+    bs += (pq.cantidad || 0) * (pq.precioVentaBs || 0);
+    usd += (pq.cantidad || 0) * (pq.precioVentaUsd || 0);
+  });
+  return { bs, usd };
+}
+
 async function awGetPermitirFechaPasada() {
   const { data, error } = await awSupabase.from('configuracion').select('permitir_fecha_pasada').eq('id', 1).single();
   if (error) { console.error(error); return false; }
