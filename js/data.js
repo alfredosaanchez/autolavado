@@ -381,7 +381,10 @@ async function awVenderArticuloInventario(id, cantidad) {
    del inventario) y el formato viejo (texto libre + monto) para tickets antiguos. */
 function awServiciosATexto(servicios) {
   if (!Array.isArray(servicios) || servicios.length === 0) return '—';
-  return servicios.map(s => `${s.nombre}${s.cuponAplicado ? ' 🎟️-50%' : ''}`).join(', ');
+  return servicios.map(s => {
+    const porcentaje = s.cuponPorcentaje !== undefined ? s.cuponPorcentaje : (s.cuponAplicado ? 50 : 0);
+    return `${s.nombre}${porcentaje > 0 ? ` 🎟️-${porcentaje}%` : ''}`;
+  }).join(', ');
 }
 
 function awPeriquitosATexto(periquitos) {

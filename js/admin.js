@@ -643,13 +643,13 @@ function exportarRegistrosCsv() {
   const registros = aplicarBusquedaRegistros(getFiltered());
   if (registros.length === 0) { showToast('No hay registros para exportar'); return; }
 
-  const headers = ['Fecha', 'Cliente', 'Teléfono', 'Carro', 'Color', 'Servicio', 'Cupón 50%', 'Bebidas/Snacks', 'Periquitos', 'Método', 'Referencia', 'Monto', 'Moneda', 'Monto Bs', 'Monto $', 'Lavador', 'Porcentaje', 'Comisión', 'Propina', 'Estado', 'Observaciones'];
+  const headers = ['Fecha', 'Cliente', 'Teléfono', 'Carro', 'Color', 'Servicio', 'Cupón', 'Bebidas/Snacks', 'Periquitos', 'Método', 'Referencia', 'Monto', 'Moneda', 'Monto Bs', 'Monto $', 'Lavador', 'Porcentaje', 'Comisión', 'Propina', 'Estado', 'Observaciones'];
   const filas = registros.map(r => {
     const comision = r.pago.monto * (r.porcentajeLavador / 100);
     const montos = awMontosRegistro(r);
     return [
       awFormatDateTime(r.fecha), r.cliente.nombre, r.cliente.telefono, r.carro.modelo, r.carro.color,
-      awServiciosATexto(r.servicios), r.cuponAplicado ? 'Sí' : 'No', awBebidasATexto(r.bebidas),
+      awServiciosATexto(r.servicios), r.cuponAplicado ? (r.servicios || []).filter(s => s.cuponAplicado || s.cuponPorcentaje > 0).map(s => `${s.nombre}: ${s.cuponPorcentaje !== undefined ? s.cuponPorcentaje : 50}%`).join(' | ') : 'No', awBebidasATexto(r.bebidas),
       awPeriquitosATexto(r.periquitos),
       awPaymentLabel(r.pago.metodo), r.pago.referencia || '', r.pago.monto, r.pago.moneda,
       montos.bs.toFixed(2), montos.usd.toFixed(2),

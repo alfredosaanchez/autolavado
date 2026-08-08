@@ -286,12 +286,12 @@ function addServicioFila() {
         ${opciones}
       </select>
     </div>
-    <div class="field" style="max-width:150px; flex:none;">
-      <label>&nbsp;</label>
-      <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:.78rem; padding:9px 0;">
-        <input type="checkbox" class="servicio-cupon-fila" style="width:15px; height:15px; cursor:pointer;">
-        🎟️ Cupón 50%
-      </label>
+    <div class="field" style="max-width:180px; flex:none;">
+      <label>🎟️ Cupón de descuento</label>
+      <div style="display:flex; align-items:center; gap:5px;">
+        <input type="number" class="servicio-cupon-porcentaje" min="0" max="100" step="1" value="" placeholder="0" style="width:78px;">
+        <span style="font-size:.8rem;">% descuento</span>
+      </div>
     </div>
     ${awServiciosCache.length === 0 ? '' : '<button type="button" class="btn-quitar-fila" title="Quitar">×</button>'}
   `;
@@ -302,7 +302,14 @@ function addServicioFila() {
   }
 
   div.querySelector('.servicio-select-fila').addEventListener('change', actualizarHintPrecio);
-  div.querySelector('.servicio-cupon-fila').addEventListener('change', actualizarHintPrecio);
+  const cuponPorcentaje = div.querySelector('.servicio-cupon-porcentaje');
+  cuponPorcentaje.addEventListener('input', () => {
+    let valor = parseFloat(cuponPorcentaje.value);
+    if (Number.isNaN(valor)) valor = 0;
+    valor = Math.max(0, Math.min(100, valor));
+    cuponPorcentaje.value = valor === 0 ? '' : valor;
+    actualizarHintPrecio();
+  });
   const btnQuitar = div.querySelector('.btn-quitar-fila');
   if (btnQuitar) {
     btnQuitar.addEventListener('click', () => {
@@ -320,14 +327,17 @@ function leerFilasServicios() {
     const servicioId = div.querySelector('.servicio-select-fila').value;
     const s = awServiciosCache.find(x => x.id === servicioId);
     if (!s) return;
-    const cuponAplicado = div.querySelector('.servicio-cupon-fila').checked;
-    const factor = cuponAplicado ? 0.5 : 1;
+    let cuponPorcentaje = parseFloat(div.querySelector('.servicio-cupon-porcentaje').value);
+    if (Number.isNaN(cuponPorcentaje)) cuponPorcentaje = 0;
+    cuponPorcentaje = Math.max(0, Math.min(100, cuponPorcentaje));
+    const factor = 1 - (cuponPorcentaje / 100);
     filas.push({
       id: s.id,
       nombre: s.nombre,
       precioUsd: s.precioUsd,
       precioBs: awPrecioBsEfectivo(s, awTasaCache),
-      cuponAplicado,
+      cuponAplicado: cuponPorcentaje > 0,
+      cuponPorcentaje,
       precioUsdFinal: (s.precioUsd || 0) * factor,
       precioBsFinal: awPrecioBsEfectivo(s, awTasaCache) * factor
     });
@@ -466,7 +476,7 @@ function actualizarHintPrecio() {
   const totalUsd = precioServiciosUsd + bebidasUsd + periquitosUsd;
 
   document.getElementById('resumenServicioTxt').textContent = serviciosFilas.length > 0
-    ? serviciosFilas.map(f => `${f.nombre}${f.cuponAplicado ? ' 🎟️-50%' : ''}`).join(', ') + ` — ${awFormatMoney(precioServiciosBs, 'Bs')} / ${awFormatMoney(precioServiciosUsd, 'USD')}`
+    ? serviciosFilas.map(f => `${f.nombre}${f.cuponAplicado ? ` 🎟️-${f.cuponPorcentaje ?? 50}%` : ''}`).join(', ') + ` — ${awFormatMoney(precioServiciosBs, 'Bs')} / ${awFormatMoney(precioServiciosUsd, 'USD')}`
     : 'Selecciona al menos un servicio';
 
   const bebidasLinea = document.getElementById('resumenBebidasLinea');
