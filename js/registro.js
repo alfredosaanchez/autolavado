@@ -566,8 +566,9 @@ async function onSubmitRegistro(e) {
   }
   const metodo = metodoChecked.value;
   const serviciosFilas = leerFilasServicios();
-  const lavadorId = document.getElementById('lavadorSelect').value;
-  const lavador = awLavadoresCache.find(l => l.id === lavadorId);
+  const lavadorId = document.getElementById('lavadorSelect').value || '';
+  const lavador = lavadorId ? awLavadoresCache.find(l => l.id === lavadorId) : null;
+  const porcentajeLavador = parseFloat(document.getElementById('porcentajeLavador').value);
 
   if (serviciosFilas.length === 0) {
     showToast('Selecciona al menos un servicio');
@@ -774,7 +775,7 @@ function renderTicket(r) {
       <div class="ticket-top">
         <div>
           <div class="ticket-client">${escapeHtml(r.cliente.nombre)}</div>
-          <div class="ticket-sub">${escapeHtml(r.cliente.telefono)} · ${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</div>
+          <div class="ticket-sub">${escapeHtml(r.cliente.telefono)} · ${escapeHtml(r.carro?.modelo || '—')}${r.carro?.color ? ` (${escapeHtml(r.carro.color)})` : ''}</div>
         </div>
         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
           <span class="stamp ${r.estado.toLowerCase()}">${r.estado}</span>
@@ -791,7 +792,7 @@ function renderTicket(r) {
         <div class="lbl">Periquitos</div><div class="val">${periquitosTxt}</div>
         <div class="lbl">Método de pago</div><div class="val">${awPaymentLabel(r.pago.metodo)}</div>
         <div class="lbl">Referencia</div><div class="val">${r.pago.referencia ? escapeHtml(r.pago.referencia) : '—'}</div>
-        <div class="lbl">Lavador</div><div class="val">${escapeHtml(r.lavador.nombre)} (${r.porcentajeLavador}%)</div>
+        <div class="lbl">Lavador</div><div class="val">${escapeHtml(r.lavador?.nombre || '—')} (${r.porcentajeLavador}%)</div>
         <div class="lbl">Propina</div><div class="val">${propinaTxt}</div>
         ${r.observaciones ? `<div class="lbl">Obs.</div><div class="val">${escapeHtml(r.observaciones)}</div>` : ''}
       </div>
@@ -854,14 +855,14 @@ function imprimirTicket(id) {
       <table>
         <tr><td class="lbl">Cliente</td><td class="val">${escapeHtml(r.cliente.nombre)}</td></tr>
         <tr><td class="lbl">Teléfono</td><td class="val">${escapeHtml(r.cliente.telefono)}</td></tr>
-        <tr><td class="lbl">Vehículo</td><td class="val">${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</td></tr>
+        <tr><td class="lbl">Vehículo</td><td class="val">${escapeHtml(r.carro?.modelo || '—')}${r.carro?.color ? ` (${escapeHtml(r.carro.color)})` : ''}</td></tr>
       </table>
       <hr>
       <table>
         <tr><td class="lbl">Servicio</td><td class="val">${escapeHtml(awServiciosATexto(r.servicios))}</td></tr>
         <tr><td class="lbl">Bebidas/Snacks</td><td class="val">${escapeHtml(bebidasTxt)}</td></tr>
         <tr><td class="lbl">Periquitos</td><td class="val">${escapeHtml(periquitosTxt)}</td></tr>
-        <tr><td class="lbl">Lavador</td><td class="val">${escapeHtml(r.lavador.nombre)}</td></tr>
+        <tr><td class="lbl">Lavador</td><td class="val">${escapeHtml(r.lavador?.nombre || '—')}</td></tr>
         <tr><td class="lbl">Propina</td><td class="val">${propinaTxt}</td></tr>
       </table>
       <hr>

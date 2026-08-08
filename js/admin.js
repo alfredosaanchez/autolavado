@@ -359,7 +359,7 @@ function getFiltered() {
     if (desde && fecha < new Date(desde + 'T00:00:00')) return false;
     if (hasta && fecha > new Date(hasta + 'T23:59:59')) return false;
     if (estado && r.estado !== estado) return false;
-    if (lavadorId && r.lavador.id !== lavadorId) return false;
+    if (lavadorId && (!r.lavador || r.lavador.id !== lavadorId)) return false;
     if (servicioId && !(r.servicios || []).some(s => s.id === servicioId)) return false;
     if (awSucursalActivaAdmin !== 'todas' && r.sucursalId !== awSucursalActivaAdmin) return false;
     return true;
@@ -418,7 +418,7 @@ function aplicarBusquedaRegistros(registros) {
   if (!q) return registros;
   return registros.filter(r => {
     const campos = [
-      r.cliente.nombre, r.cliente.telefono, r.carro.modelo, r.carro.color,
+      r.cliente.nombre, r.cliente.telefono, r.carro?.modelo || '', r.carro?.color || '',
       awServiciosATexto(r.servicios), r.lavador.nombre, r.pago.referencia, r.pago.metodo,
       r.estado, r.observaciones, awBebidasATexto(r.bebidas), awPeriquitosATexto(r.periquitos)
     ];
@@ -475,7 +475,7 @@ function renderResumen(registros) {
       <tr>
         <td>${escapeHtml(r.cliente.nombre)}</td>
         <td>${escapeHtml(r.cliente.telefono)}</td>
-        <td>${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</td>
+        <td>${escapeHtml(r.carro?.modelo || '—')}${r.carro?.color ? ` (${escapeHtml(r.carro.color)})` : ''}</td>
         <td>${escapeHtml(awServiciosATexto(r.servicios))}</td>
         <td>${awFormatMoney(r.pago.monto, r.pago.moneda)}</td>
         <td>${awFormatDateTime(r.fecha)}</td>
@@ -598,14 +598,14 @@ function renderTablaRegistros(registros) {
         <td>${awFormatDateTime(r.fecha)}</td>
         <td>${escapeHtml(r.cliente.nombre)}${r.cuponAplicado ? ' 🎟️' : ''}</td>
         <td>${escapeHtml(r.cliente.telefono)}</td>
-        <td>${escapeHtml(r.carro.modelo)} (${escapeHtml(r.carro.color)})</td>
+        <td>${escapeHtml(r.carro?.modelo || '—')}${r.carro?.color ? ` (${escapeHtml(r.carro.color)})` : ''}</td>
         <td>${escapeHtml(awServiciosATexto(r.servicios))}</td>
         <td>${escapeHtml(bebidasTxt)}</td>
         <td>${escapeHtml(periquitosTxt)}</td>
         <td>${awPaymentLabel(r.pago.metodo)}</td>
         <td>${r.pago.referencia ? escapeHtml(r.pago.referencia) : '—'}</td>
         <td>${awFormatMoney(r.pago.monto, r.pago.moneda)}</td>
-        <td>${escapeHtml(r.lavador.nombre)}</td>
+        <td>${escapeHtml(r.lavador?.nombre || '—')}</td>
         <td>${r.porcentajeLavador}%</td>
         <td>${awFormatMoney(comision, r.pago.moneda)}</td>
         <td>${propinaTxt}</td>
@@ -648,12 +648,12 @@ function exportarRegistrosCsv() {
     const comision = r.pago.monto * (r.porcentajeLavador / 100);
     const montos = awMontosRegistro(r);
     return [
-      awFormatDateTime(r.fecha), r.cliente.nombre, r.cliente.telefono, r.carro.modelo, r.carro.color,
+      awFormatDateTime(r.fecha), r.cliente.nombre, r.cliente.telefono, r.carro?.modelo || '', r.carro?.color || '',
       awServiciosATexto(r.servicios), r.cuponAplicado ? (r.servicios || []).filter(s => s.cuponAplicado || s.cuponPorcentaje > 0).map(s => `${s.nombre}: ${s.cuponPorcentaje !== undefined ? s.cuponPorcentaje : 50}%`).join(' | ') : 'No', awBebidasATexto(r.bebidas),
       awPeriquitosATexto(r.periquitos),
       awPaymentLabel(r.pago.metodo), r.pago.referencia || '', r.pago.monto, r.pago.moneda,
       montos.bs.toFixed(2), montos.usd.toFixed(2),
-      r.lavador.nombre, r.porcentajeLavador, comision.toFixed(2), r.propina.monto, r.estado, r.observaciones || ''
+      r.lavador?.nombre || '—', r.porcentajeLavador || 0, comision.toFixed(2), r.propina.monto, r.estado, r.observaciones || ''
     ];
   });
 
