@@ -477,7 +477,7 @@ function actualizarHintPrecio() {
 
   document.getElementById('resumenServicioTxt').textContent = serviciosFilas.length > 0
     ? serviciosFilas.map(f => `${f.nombre}${f.cuponAplicado ? ` 🎟️-${f.cuponPorcentaje ?? 50}%` : ''}`).join(', ') + ` — ${awFormatMoney(precioServiciosBs, 'Bs')} / ${awFormatMoney(precioServiciosUsd, 'USD')}`
-    : 'Selecciona al menos un servicio';
+    : 'Sin servicios';
 
   const bebidasLinea = document.getElementById('resumenBebidasLinea');
   const bebidasHayAlguna = Object.values(awDrinkCounts).some(v => v > 0);
@@ -569,13 +569,6 @@ async function onSubmitRegistro(e) {
   const lavadorId = document.getElementById('lavadorSelect').value || '';
   const lavador = lavadorId ? awLavadoresCache.find(l => l.id === lavadorId) : null;
   const porcentajeLavador = parseFloat(document.getElementById('porcentajeLavador').value);
-
-  if (serviciosFilas.length === 0) {
-    showToast('Selecciona al menos un servicio');
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Registrar lavado';
-    return;
-  }
 
   const monedaPago = document.getElementById('monedaPago').value;
   const montoFinal = parseFloat(document.getElementById('montoTotal').value) || 0;
