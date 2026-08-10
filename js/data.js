@@ -280,12 +280,12 @@ async function awDeleteRegistro(id) {
 function awFormatMoney(amount, moneda) {
   const n = Number(amount) || 0;
   const symbol = moneda === 'USD' ? '$' : 'Bs';
-  return `${symbol} ${n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${symbol} ${n.toLocaleString('es-VE', { timeZone: 'America/Caracas', minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function awFormatDateTime(iso) {
   const d = new Date(iso);
-  return d.toLocaleString('es-VE', {
+  return d.toLocaleString('es-VE', { timeZone: 'America/Caracas',
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
@@ -294,13 +294,29 @@ function awFormatDateTime(iso) {
 function awIsToday(iso) {
   const d = new Date(iso);
   const now = new Date();
-  return d.getFullYear() === now.getFullYear() &&
-         d.getMonth() === now.getMonth() &&
-         d.getDate() === now.getDate();
+  const parts = (value) => {
+    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const out = {};
+    fmt.formatToParts(value).forEach(p => { if (p.type !== 'literal') out[p.type] = Number(p.value); });
+    return out;
+  };
+  const a = parts(d), b = parts(now);
+  return a.year === b.year && a.month === b.month && a.day === b.day;
 }
 
 function awPaymentLabel(metodo) {
   return { efectivo: 'Efectivo', punto: 'Punto de venta', movil: 'Pago móvil', pendiente: 'Pendiente' }[metodo] || metodo;
+}
+
+function awPaymentSummary(pago) {
+  if (!pago) return '—';
+  const pagos = Array.isArray(pago.metodos) && pago.metodos.length
+    ? pago.metodos
+    : [{ metodo: pago.metodo, moneda: pago.moneda, monto: pago.monto, referencia: pago.referencia }];
+  return pagos.map(p => {
+    const ref = p.referencia ? ` (Ref: ${p.referencia})` : '';
+    return `${awPaymentLabel(p.metodo)}: ${awFormatMoney(p.monto || 0, p.moneda || 'Bs')}${ref}`;
+  }).join(' + ');
 }
 
 /* ---------- Perfiles / Usuarios (jerarquía) ---------- */

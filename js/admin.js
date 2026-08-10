@@ -370,10 +370,19 @@ function getFiltered() {
    sin importar en qué moneda se haya cargado), usando lo guardado en pago.montoBs/montoUsd
    con respaldo (tickets viejos) al cálculo simple por pago.monto/pago.moneda. */
 function awMontosRegistro(r) {
-  if (typeof r.pago.montoBs === 'number' && typeof r.pago.montoUsd === 'number') {
-    return { bs: r.pago.montoBs, usd: r.pago.montoUsd };
-  }
-  return awConvertir(r.pago.monto, r.pago.moneda, r.pago.tasaUsada || awTasaCache || 1);
+  const pago = r.pago || {};
+  const pagos = Array.isArray(pago.metodos) && pago.metodos.length
+    ? pago.metodos
+    : [pago];
+  return pagos.reduce((tot, p) => {
+    if (typeof p.montoBs === 'number' && typeof p.montoUsd === 'number') {
+      tot.bs += p.montoBs; tot.usd += p.montoUsd;
+    } else {
+      const conv = awConvertir(p.monto, p.moneda, p.tasaUsada || pago.tasaUsada || awTasaCache || 1);
+      tot.bs += conv.bs; tot.usd += conv.usd;
+    }
+    return tot;
+  }, { bs: 0, usd: 0 });
 }
 
 /* renderAll: recarga todo desde la base de datos */
@@ -419,7 +428,7 @@ function aplicarBusquedaRegistros(registros) {
   return registros.filter(r => {
     const campos = [
       r.cliente.nombre, r.cliente.telefono, r.carro?.modelo || '', r.carro?.color || '',
-      awServiciosATexto(r.servicios), r.lavador.nombre, r.pago.referencia, r.pago.metodo,
+      awServiciosATexto(r.servicios), r.lavador.nombre, r.pago.referencia, r.pago.metodo, awPaymentSummary(r.pago),
       r.estado, r.observaciones, awBebidasATexto(r.bebidas), awPeriquitosATexto(r.periquitos)
     ];
     return campos.some(c => c && String(c).toLowerCase().includes(q));
@@ -469,15 +478,16 @@ function renderResumen(registros) {
   if (tablaPendientes) {
     tablaPendientes.innerHTML = pendientes.length ? pendientes.map(r => {
       const costoTotal = awCostoTotalRegistro(r);
-      const saldoBs = Math.max(0, costoTotal.bs - r.pago.montoBs);
-      const saldoUsd = Math.max(0, costoTotal.usd - r.pago.montoUsd);
+      const pagado = awMontosRegistro(r);
+      const saldoBs = Math.max(0, costoTotal.bs - pagado.bs);
+      const saldoUsd = Math.max(0, costoTotal.usd - pagado.usd);
       return `
       <tr>
         <td>${escapeHtml(r.cliente.nombre)}</td>
         <td>${escapeHtml(r.cliente.telefono)}</td>
         <td>${escapeHtml(r.carro?.modelo || '—')}${r.carro?.color ? ` (${escapeHtml(r.carro.color)})` : ''}</td>
         <td>${escapeHtml(awServiciosATexto(r.servicios))}</td>
-        <td>${awFormatMoney(r.pago.monto, r.pago.moneda)}</td>
+        <td>${escapeHtml(awPaymentSummary(r.pago))}</td>
         <td>${awFormatDateTime(r.fecha)}</td>
         <td>
           <button class="btn btn-accent btn-sm" data-toggle-pago-admin="${r.id}">💳 Completar pago</button>
@@ -560,17 +570,21 @@ async function confirmarPagoDesdeAdmin(id) {
   const moneda = document.getElementById(`pago-admin-moneda-${id}`).value;
   const monto = parseFloat(document.getElementById(`pago-admin-monto-${id}`).value) || 0;
   const referencia = document.getElementById(`pago-admin-ref-${id}`).value.trim();
-  const conv = awConvertir(monto, moneda, awTasaCache);
-
+  if (monto <= 0) { showToast('El monto debe ser mayor que 0'); return; }
+  if ((metodo === 'punto' || metodo === 'movil') && !referencia) { showToast(`${awPaymentLabel(metodo)} requiere referencia`); return; }
   const registroActual = awRegistrosCache.find(r => r.id === id);
-  const costoTotal = registroActual ? awCostoTotalRegistro(registroActual) : { bs: 0, usd: 0 };
-  const costoEnMoneda = moneda === 'USD' ? costoTotal.usd : costoTotal.bs;
-  const nuevoEstado = monto >= (costoEnMoneda - 0.01) ? 'PAGADO' : 'PENDIENTE';
-
-  const ok = await awUpdateRegistro(id, {
-    estado: nuevoEstado,
-    pago: { metodo, moneda, monto, montoBs: conv.bs, montoUsd: conv.usd, referencia, tasaUsada: awTasaCache }
-  });
+  if (!registroActual) return;
+  const nuevoPago = { metodo, moneda, monto, referencia, ...awConvertir(monto, moneda, awTasaCache) };
+  const pagosPrevios = Array.isArray(registroActual.pago?.metodos) && registroActual.pago.metodos.length
+    ? registroActual.pago.metodos.filter(p => p.metodo !== 'pendiente')
+    : (registroActual.pago?.metodo && registroActual.pago.metodo !== 'pendiente' ? [{ metodo: registroActual.pago.metodo, moneda: registroActual.pago.moneda, monto: registroActual.pago.monto, montoBs: registroActual.pago.montoBs, montoUsd: registroActual.pago.montoUsd, referencia: registroActual.pago.referencia }] : []);
+  const pagos = [...pagosPrevios, nuevoPago];
+  const costoTotal = awCostoTotalRegistro(registroActual);
+  const totalUsd = pagos.reduce((a,p) => a + (typeof p.montoUsd === 'number' ? p.montoUsd : awConvertir(p.monto,p.moneda,awTasaCache).usd), 0);
+  const totalBs = pagos.reduce((a,p) => a + (typeof p.montoBs === 'number' ? p.montoBs : awConvertir(p.monto,p.moneda,awTasaCache).bs), 0);
+  const nuevoEstado = totalUsd >= (costoTotal.usd - 0.01) ? 'PAGADO' : 'PENDIENTE';
+  const pago = { metodo: pagos[0]?.metodo || metodo, moneda: pagos[0]?.moneda || moneda, monto: pagos[0]?.monto || monto, montoBs: totalBs, montoUsd: totalUsd, referencia: pagos.map(p=>p.referencia).filter(Boolean).join(' | '), metodos: pagos, tasaUsada: awTasaCache };
+  const ok = await awUpdateRegistro(id, { estado: nuevoEstado, pago });
   showToast(ok ? (nuevoEstado === 'PAGADO' ? 'Pago completado' : 'Abono registrado — todavía queda pendiente') : 'No se pudo actualizar');
   await renderAll();
 }
@@ -588,7 +602,9 @@ function renderTablaRegistros(registros) {
   tbody.innerHTML = registros.map(r => {
     const bebidasTxt = awBebidasATexto(r.bebidas);
     const periquitosTxt = awPeriquitosATexto(r.periquitos);
-    const comision = r.pago.monto * (r.porcentajeLavador / 100);
+    const montosPago = awMontosRegistro(r);
+    const comisionBs = montosPago.bs * (r.porcentajeLavador / 100);
+    const comisionUsd = montosPago.usd * (r.porcentajeLavador / 100);
     const propinaTxt = r.propina.monto > 0 ? awFormatMoney(r.propina.monto, r.propina.moneda) : '—';
     const accionPendiente = r.estado === 'PENDIENTE'
       ? `<a class="btn btn-whatsapp btn-sm" href="${awWhatsAppLinkPendiente(r)}" target="_blank" rel="noopener">💬 Recordar</a>`
@@ -602,12 +618,12 @@ function renderTablaRegistros(registros) {
         <td>${escapeHtml(awServiciosATexto(r.servicios))}</td>
         <td>${escapeHtml(bebidasTxt)}</td>
         <td>${escapeHtml(periquitosTxt)}</td>
-        <td>${awPaymentLabel(r.pago.metodo)}</td>
+        <td>${escapeHtml(awPaymentSummary(r.pago))}</td>
         <td>${r.pago.referencia ? escapeHtml(r.pago.referencia) : '—'}</td>
-        <td>${awFormatMoney(r.pago.monto, r.pago.moneda)}</td>
+        <td>${awFormatMoney(awMontosRegistro(r).usd, 'USD')} · ${awFormatMoney(awMontosRegistro(r).bs, 'Bs')}</td>
         <td>${escapeHtml(r.lavador?.nombre || '—')}</td>
         <td>${r.porcentajeLavador}%</td>
-        <td>${awFormatMoney(comision, r.pago.moneda)}</td>
+        <td>${awFormatMoney(comisionBs, 'Bs')} · ${awFormatMoney(comisionUsd, 'USD')}</td>
         <td>${propinaTxt}</td>
         <td><span class="badge ${r.estado.toLowerCase()}">${r.estado}</span></td>
         <td>${r.observaciones ? escapeHtml(r.observaciones) : '—'}</td>
@@ -643,17 +659,16 @@ function exportarRegistrosCsv() {
   const registros = aplicarBusquedaRegistros(getFiltered());
   if (registros.length === 0) { showToast('No hay registros para exportar'); return; }
 
-  const headers = ['Fecha', 'Cliente', 'Teléfono', 'Carro', 'Color', 'Servicio', 'Cupón', 'Bebidas/Snacks', 'Periquitos', 'Método', 'Referencia', 'Monto', 'Moneda', 'Monto Bs', 'Monto $', 'Lavador', 'Porcentaje', 'Comisión', 'Propina', 'Estado', 'Observaciones'];
+  const headers = ['Fecha', 'Cliente', 'Teléfono', 'Carro', 'Color', 'Servicio', 'Cupón', 'Bebidas/Snacks', 'Periquitos', 'Métodos', 'Referencia', 'Monto', 'Moneda', 'Monto Bs', 'Monto $', 'Lavador', 'Porcentaje', 'Comisión', 'Propina', 'Estado', 'Observaciones'];
   const filas = registros.map(r => {
-    const comision = r.pago.monto * (r.porcentajeLavador / 100);
     const montos = awMontosRegistro(r);
     return [
       awFormatDateTime(r.fecha), r.cliente.nombre, r.cliente.telefono, r.carro?.modelo || '', r.carro?.color || '',
       awServiciosATexto(r.servicios), r.cuponAplicado ? (r.servicios || []).filter(s => s.cuponAplicado || s.cuponPorcentaje > 0).map(s => `${s.nombre}: ${s.cuponPorcentaje !== undefined ? s.cuponPorcentaje : 50}%`).join(' | ') : 'No', awBebidasATexto(r.bebidas),
       awPeriquitosATexto(r.periquitos),
-      awPaymentLabel(r.pago.metodo), r.pago.referencia || '', r.pago.monto, r.pago.moneda,
+      awPaymentSummary(r.pago), r.pago.referencia || '', montos.usd.toFixed(2), 'USD',
       montos.bs.toFixed(2), montos.usd.toFixed(2),
-      r.lavador?.nombre || '—', r.porcentajeLavador || 0, comision.toFixed(2), r.propina.monto, r.estado, r.observaciones || ''
+      r.lavador?.nombre || '—', r.porcentajeLavador || 0, `${(montos.bs * (r.porcentajeLavador || 0) / 100).toFixed(2)} Bs / ${(montos.usd * (r.porcentajeLavador || 0) / 100).toFixed(2)} USD`, r.propina.monto, r.estado, r.observaciones || ''
     ];
   });
 

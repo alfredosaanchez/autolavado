@@ -1,3 +1,4 @@
+const CARACAS_TIME_ZONE = 'America/Caracas';
 /* =========================================================
    registro.js — lógica de la página principal de registro
    ========================================================= */
@@ -205,9 +206,6 @@ async function mostrarFormularioRegistro(session, perfil) {
 
   bindMetodoPago();
   bindServicioChange();
-  document.getElementById('montoTotal').addEventListener('input', (e) => {
-    e.target.dataset.touched = '1';
-  });
   document.getElementById('btnAddPeriquito').addEventListener('click', addPeriquitoFila);
   document.getElementById('form-registro').addEventListener('submit', onSubmitRegistro);
   document.getElementById('buscadorTickets').addEventListener('input', renderTicketsFiltrados);
@@ -346,7 +344,6 @@ function leerFilasServicios() {
 }
 
 function bindServicioChange() {
-  document.getElementById('monedaPago').addEventListener('change', actualizarHintPrecio);
   document.getElementById('btnAddServicioFila').addEventListener('click', addServicioFila);
 }
 
@@ -458,7 +455,6 @@ function leerFilasPeriquitos() {
 
 /* ---------- Resumen de cobro (usa la tasa para que TODO cuadre en ambas monedas) ---------- */
 function actualizarHintPrecio() {
-  const moneda = document.getElementById('monedaPago').value;
   const tasa = awTasaCache || 1;
 
   const serviciosFilas = leerFilasServicios();
@@ -505,13 +501,9 @@ function actualizarHintPrecio() {
   document.getElementById('resumenTotalUsd').textContent = awFormatMoney(totalUsd, 'USD');
 
   const hint = document.getElementById('servicioPrecioHint');
-  const totalMoneda = moneda === 'USD' ? totalUsd : totalBs;
-  hint.textContent = serviciosFilas.length > 0 ? `Se sugiere cobrar ${awFormatMoney(totalMoneda, moneda)} en ${moneda}. (Tasa: ${awFormatMoney(tasa, 'Bs')}/$)` : '';
-
-  const montoInput = document.getElementById('montoTotal');
-  if (!montoInput.dataset.touched) {
-    montoInput.value = totalMoneda || '';
-  }
+  const hayCobro = totalUsd > 0 || totalBs > 0;
+  hint.textContent = hayCobro ? `Total a cobrar: ${awFormatMoney(totalUsd, 'USD')} · ${awFormatMoney(totalBs, 'Bs')}. (Tasa: ${awFormatMoney(tasa, 'Bs')}/$)` : '';
+  actualizarResumenPagos();
 }
 
 /* ---------- Contador de bebidas/snacks ---------- */
@@ -529,25 +521,114 @@ function bindDrinkSteppers() {
   });
 }
 
-/* ---------- Método de pago ---------- */
-function bindMetodoPago() {
-  const radios = document.querySelectorAll('input[name="metodoPago"]');
-  radios.forEach(r => r.addEventListener('change', updateReferenciaVisibility));
-  updateReferenciaVisibility();
+/* ---------- Métodos de pago múltiples ---------- */
+let awPagoFilaCounter = 0;
+
+function paymentRowHtml(id) {
+  return `
+    <div class="pago-fila" data-pago-id="${id}">
+      <div class="field">
+        <label>Método</label>
+        <select class="pago-metodo">
+          <option value="efectivo">Efectivo</option>
+          <option value="punto">Punto de venta</option>
+          <option value="movil">Pago móvil</option>
+          <option value="pendiente">Pendiente</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Moneda</label>
+        <select class="pago-moneda">
+          <option value="Bs">Bs</option>
+          <option value="USD">$</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Monto</label>
+        <input type="number" class="pago-monto" min="0" step="0.01" placeholder="0.00">
+      </div>
+      <div class="field pago-referencia-wrap">
+        <label>Referencia</label>
+        <input type="text" class="pago-referencia" placeholder="N.º de referencia">
+      </div>
+      <button type="button" class="btn btn-ghost btn-quitar-fila pago-quitar" title="Quitar">×</button>
+    </div>`;
 }
 
-function updateReferenciaVisibility() {
-  const checked = document.querySelector('input[name="metodoPago"]:checked');
-  const metodo = checked ? checked.value : '';
-  const wrap = document.getElementById('referenciaWrap');
-  const refInput = document.getElementById('referenciaPago');
-  if (metodo === 'punto' || metodo === 'movil') {
-    wrap.style.opacity = '1';
-    refInput.setAttribute('required', 'required');
-  } else {
-    wrap.style.opacity = '0.5';
-    refInput.removeAttribute('required');
-  }
+function addPagoFila() {
+  const cont = document.getElementById('pagosFilas');
+  if (!cont) return;
+  const id = `pg-${++awPagoFilaCounter}`;
+  const div = document.createElement('div');
+  div.innerHTML = paymentRowHtml(id);
+  const row = div.firstElementChild;
+  cont.appendChild(row);
+  const metodo = row.querySelector('.pago-metodo');
+  const moneda = row.querySelector('.pago-moneda');
+  const monto = row.querySelector('.pago-monto');
+  const ref = row.querySelector('.pago-referencia');
+  const quitar = row.querySelector('.pago-quitar');
+
+  const refresh = () => {
+    const requiereRef = metodo.value === 'punto' || metodo.value === 'movil';
+    const wrap = row.querySelector('.pago-referencia-wrap');
+    wrap.style.opacity = requiereRef ? '1' : '.5';
+    if (requiereRef) ref.setAttribute('required', 'required');
+    else ref.removeAttribute('required');
+    if (metodo.value === 'pendiente') {
+      monto.value = '';
+      monto.disabled = true;
+      moneda.disabled = true;
+      ref.value = '';
+      ref.disabled = true;
+    } else {
+      monto.disabled = false;
+      moneda.disabled = false;
+      ref.disabled = false;
+    }
+    actualizarResumenPagos();
+  };
+  metodo.addEventListener('change', refresh);
+  moneda.addEventListener('change', actualizarResumenPagos);
+  monto.addEventListener('input', actualizarResumenPagos);
+  ref.addEventListener('input', actualizarResumenPagos);
+  quitar.addEventListener('click', () => {
+    if (document.querySelectorAll('#pagosFilas .pago-fila').length <= 1) {
+      showToast('Debe existir al menos un método de pago');
+      return;
+    }
+    row.remove();
+    actualizarResumenPagos();
+  });
+  refresh();
+}
+
+function leerPagos() {
+  const pagos = [];
+  document.querySelectorAll('#pagosFilas .pago-fila').forEach(row => {
+    const metodo = row.querySelector('.pago-metodo').value;
+    const moneda = row.querySelector('.pago-moneda').value;
+    const monto = parseFloat(row.querySelector('.pago-monto').value) || 0;
+    const referencia = row.querySelector('.pago-referencia').value.trim();
+    pagos.push({ metodo, moneda, monto, referencia, ...awConvertir(monto, moneda, awTasaCache) });
+  });
+  return pagos;
+}
+
+function actualizarResumenPagos() {
+  const pagos = leerPagos();
+  const bs = pagos.reduce((a,p) => a + (p.montoBs || 0), 0);
+  const usd = pagos.reduce((a,p) => a + (p.montoUsd || 0), 0);
+  const el = document.getElementById('resumenPagosRegistro');
+  if (el) el.innerHTML = `Total pagado: <strong>${awFormatMoney(bs, 'Bs')}</strong> · <strong>${awFormatMoney(usd, 'USD')}</strong>`;
+}
+
+function bindMetodoPago() {
+  const btn = document.getElementById('btnAddPagoFila');
+  if (btn) btn.addEventListener('click', addPagoFila);
+  const cont = document.getElementById('pagosFilas');
+  if (cont && !cont.children.length) addPagoFila();
+  actualizarResumenPagos();
 }
 
 /* ---------- Envío del formulario ---------- */
@@ -557,23 +638,36 @@ async function onSubmitRegistro(e) {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Guardando…';
 
-  const metodoChecked = document.querySelector('input[name="metodoPago"]:checked');
-  if (!metodoChecked) {
-    showToast('Selecciona un método de pago');
+  const pagos = leerPagos();
+  if (!pagos.length) {
+    showToast('Agrega al menos un método de pago');
     submitBtn.disabled = false;
     submitBtn.textContent = 'Registrar lavado';
     return;
   }
-  const metodo = metodoChecked.value;
+  if (pagos.some(p => p.metodo === 'pendiente') && pagos.length > 1) {
+    showToast('Pendiente no puede combinarse con otros métodos');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Registrar lavado';
+    return;
+  }
+  for (const p of pagos) {
+    if (p.metodo !== 'pendiente' && p.monto <= 0) {
+      showToast('Cada método de pago debe tener un monto mayor que 0');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Registrar lavado';
+      return;
+    }
+    if ((p.metodo === 'punto' || p.metodo === 'movil') && !p.referencia) {
+      showToast(`${awPaymentLabel(p.metodo)} requiere referencia`);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Registrar lavado';
+      return;
+    }
+  }
   const serviciosFilas = leerFilasServicios();
   const lavadorId = document.getElementById('lavadorSelect').value || '';
   const lavador = lavadorId ? awLavadoresCache.find(l => l.id === lavadorId) : null;
-  const porcentajeLavador = parseFloat(document.getElementById('porcentajeLavador').value);
-
-  const monedaPago = document.getElementById('monedaPago').value;
-  const montoFinal = parseFloat(document.getElementById('montoTotal').value) || 0;
-  const conv = awConvertir(montoFinal, monedaPago, awTasaCache);
-
   const fechaPasadaInput = document.getElementById('fechaRegistroPasada');
   let fechaFinal = new Date().toISOString();
   if (fechaPasadaInput && fechaPasadaInput.value) {
@@ -595,13 +689,11 @@ async function onSubmitRegistro(e) {
   const periquitosArr = leerFilasPeriquitos();
 
   const costoTotal = awCostoTotalRegistro({ servicios: serviciosFilas, bebidas: bebidasArr, periquitos: periquitosArr });
-  const costoEnMoneda = monedaPago === 'USD' ? costoTotal.usd : costoTotal.bs;
-  let estadoFinal;
-  if (metodo === 'pendiente') {
-    estadoFinal = 'PENDIENTE';
-  } else {
-    estadoFinal = montoFinal >= (costoEnMoneda - 0.01) ? 'PAGADO' : 'PENDIENTE';
-  }
+  const pagosBs = pagos.reduce((a,p) => a + (p.montoBs || 0), 0);
+  const pagosUsd = pagos.reduce((a,p) => a + (p.montoUsd || 0), 0);
+  const estadoFinal = pagos.length === 1 && pagos[0].metodo === 'pendiente'
+    ? 'PENDIENTE'
+    : (pagosUsd >= (costoTotal.usd - 0.01) ? 'PAGADO' : 'PENDIENTE');
 
   const registro = {
     id: awUid(),
@@ -618,12 +710,13 @@ async function onSubmitRegistro(e) {
     bebidas: bebidasArr,
     periquitos: periquitosArr,
     pago: {
-      metodo: metodo,
-      moneda: monedaPago,
-      monto: montoFinal,
-      montoBs: conv.bs,
-      montoUsd: conv.usd,
-      referencia: document.getElementById('referenciaPago').value.trim(),
+      metodo: pagos[0].metodo,
+      moneda: pagos[0].moneda,
+      monto: pagos[0].monto,
+      montoBs: pagosBs,
+      montoUsd: pagosUsd,
+      referencia: pagos.map(p => p.referencia).filter(Boolean).join(' | '),
+      metodos: pagos.map(p => ({ metodo: p.metodo, moneda: p.moneda, monto: p.monto, montoBs: p.montoBs, montoUsd: p.montoUsd, referencia: p.referencia })),
       tasaUsada: awTasaCache
     },
     lavador: { id: lavadorId, nombre: lavador ? lavador.nombre : '—' },
@@ -652,7 +745,7 @@ async function onSubmitRegistro(e) {
   }
   let mensajeFinal = 'Lavado registrado correctamente';
   if (registro.estado === 'PENDIENTE') {
-    mensajeFinal = metodo === 'pendiente' ? 'Registrado como PENDIENTE' : '⚠️ Registrado como PENDIENTE (el monto no cubre el total)';
+    mensajeFinal = pagos[0].metodo === 'pendiente' ? 'Registrado como PENDIENTE' : '⚠️ Registrado como PENDIENTE (los pagos no cubren el total)';
   }
   showToast(mensajeFinal);
   resetForm();
@@ -666,8 +759,9 @@ function resetForm() {
   document.getElementById('periquitosFilas').innerHTML = '';
   document.getElementById('serviciosFilas').innerHTML = '';
   addServicioFila();
-  document.getElementById('montoTotal').dataset.touched = '';
-  updateReferenciaVisibility();
+  document.getElementById('pagosFilas').innerHTML = '';
+  addPagoFila();
+  actualizarResumenPagos();
   actualizarHintPrecio();
   awGetInventario(awSucursalActivaId).then(inv => { awInventarioCache = inv; });
 }
@@ -751,8 +845,8 @@ function renderTicket(r) {
           </select>
         </div>
         <div class="field">
-          <label>Monto</label>
-          <input type="number" id="pay-monto-${r.id}" value="${r.pago.monto}" step="0.01" min="0">
+          <label>Monto a agregar</label>
+          <input type="number" id="pay-monto-${r.id}" value="" step="0.01" min="0" placeholder="0.00">
         </div>
       </div>
       <div class="field">
@@ -783,15 +877,14 @@ function renderTicket(r) {
         <div class="lbl">Servicio</div><div class="val">${escapeHtml(awServiciosATexto(r.servicios))}</div>
         <div class="lbl">Bebidas/Snacks</div><div class="val">${bebidasTxt}</div>
         <div class="lbl">Periquitos</div><div class="val">${periquitosTxt}</div>
-        <div class="lbl">Método de pago</div><div class="val">${awPaymentLabel(r.pago.metodo)}</div>
-        <div class="lbl">Referencia</div><div class="val">${r.pago.referencia ? escapeHtml(r.pago.referencia) : '—'}</div>
+        <div class="lbl">Métodos de pago</div><div class="val">${escapeHtml(awPaymentSummary(r.pago))}</div>
         <div class="lbl">Lavador</div><div class="val">${escapeHtml(r.lavador?.nombre || '—')} (${r.porcentajeLavador}%)</div>
         <div class="lbl">Propina</div><div class="val">${propinaTxt}</div>
         ${r.observaciones ? `<div class="lbl">Obs.</div><div class="val">${escapeHtml(r.observaciones)}</div>` : ''}
       </div>
       <div class="ticket-divider"></div>
       <div class="ticket-grid">
-        <div class="lbl">Total</div><div class="val ticket-amount">${awFormatMoney(r.pago.monto, r.pago.moneda)}</div>
+        <div class="lbl">Total</div><div class="val ticket-amount">${awFormatMoney(awCostoTotalRegistro(r).usd, 'USD')} · ${awFormatMoney(awCostoTotalRegistro(r).bs, 'Bs')}</div>
         <div class="lbl">Hora</div><div class="val">${awFormatDateTime(r.fecha)}</div>
       </div>
       ${pendienteBlock}
@@ -800,21 +893,26 @@ function renderTicket(r) {
 }
 
 async function confirmarPago(id) {
+  const registroActual = awTicketsHoyCache.find(t => t.id === id);
+  if (!registroActual) return;
+  const row = document.getElementById(`pay-form-${id}`);
   const metodo = document.getElementById(`pay-metodo-${id}`).value;
   const moneda = document.getElementById(`pay-moneda-${id}`).value;
   const monto = parseFloat(document.getElementById(`pay-monto-${id}`).value) || 0;
   const referencia = document.getElementById(`pay-ref-${id}`).value.trim();
-  const conv = awConvertir(monto, moneda, awTasaCache);
-
-  const registroActual = awTicketsHoyCache.find(t => t.id === id);
-  const costoTotal = registroActual ? awCostoTotalRegistro(registroActual) : { bs: 0, usd: 0 };
-  const costoEnMoneda = moneda === 'USD' ? costoTotal.usd : costoTotal.bs;
-  const nuevoEstado = monto >= (costoEnMoneda - 0.01) ? 'PAGADO' : 'PENDIENTE';
-
-  const ok = await awUpdateRegistro(id, {
-    estado: nuevoEstado,
-    pago: { metodo, moneda, monto, montoBs: conv.bs, montoUsd: conv.usd, referencia, tasaUsada: awTasaCache }
-  });
+  if (monto <= 0) { showToast('El monto debe ser mayor que 0'); return; }
+  if ((metodo === 'punto' || metodo === 'movil') && !referencia) { showToast(`${awPaymentLabel(metodo)} requiere referencia`); return; }
+  const nuevoPago = { metodo, moneda, monto, referencia, ...awConvertir(monto, moneda, awTasaCache) };
+  const pagosPrevios = Array.isArray(registroActual.pago?.metodos) && registroActual.pago.metodos.length
+    ? registroActual.pago.metodos.filter(p => p.metodo !== 'pendiente')
+    : (registroActual.pago?.metodo && registroActual.pago.metodo !== 'pendiente' ? [{ metodo: registroActual.pago.metodo, moneda: registroActual.pago.moneda, monto: registroActual.pago.monto, montoBs: registroActual.pago.montoBs, montoUsd: registroActual.pago.montoUsd, referencia: registroActual.pago.referencia }] : []);
+  const pagos = [...pagosPrevios, nuevoPago];
+  const costoTotal = awCostoTotalRegistro(registroActual);
+  const totalUsd = pagos.reduce((a,p) => a + (typeof p.montoUsd === 'number' ? p.montoUsd : awConvertir(p.monto,p.moneda,awTasaCache).usd), 0);
+  const totalBs = pagos.reduce((a,p) => a + (typeof p.montoBs === 'number' ? p.montoBs : awConvertir(p.monto,p.moneda,awTasaCache).bs), 0);
+  const nuevoEstado = totalUsd >= (costoTotal.usd - 0.01) ? 'PAGADO' : 'PENDIENTE';
+  const pago = { metodo: pagos[0]?.metodo || metodo, moneda: pagos[0]?.moneda || moneda, monto: pagos[0]?.monto || monto, montoBs: totalBs, montoUsd: totalUsd, referencia: pagos.map(p=>p.referencia).filter(Boolean).join(' | '), metodos: pagos, tasaUsada: awTasaCache };
+  const ok = await awUpdateRegistro(id, { estado: nuevoEstado, pago });
   showToast(ok ? (nuevoEstado === 'PAGADO' ? 'Pago confirmado' : 'Abono registrado — todavía queda pendiente') : 'No se pudo actualizar. Intenta de nuevo.');
   await renderTickets();
 }
@@ -857,10 +955,11 @@ function imprimirTicket(id) {
         <tr><td class="lbl">Periquitos</td><td class="val">${escapeHtml(periquitosTxt)}</td></tr>
         <tr><td class="lbl">Lavador</td><td class="val">${escapeHtml(r.lavador?.nombre || '—')}</td></tr>
         <tr><td class="lbl">Propina</td><td class="val">${propinaTxt}</td></tr>
+        <tr><td class="lbl">Pagos</td><td class="val">${escapeHtml(awPaymentSummary(r.pago))}</td></tr>
       </table>
       <hr>
       <table>
-        <tr><td class="lbl total">TOTAL</td><td class="val total">${awFormatMoney(r.pago.monto, r.pago.moneda)}</td></tr>
+        <tr><td class="lbl total">TOTAL</td><td class="val total">${awFormatMoney(awCostoTotalRegistro(r).usd, 'USD')} / ${awFormatMoney(awCostoTotalRegistro(r).bs, 'Bs')}</td></tr>
         <tr><td class="lbl">Estado</td><td class="val">${r.estado}</td></tr>
       </table>
       <div class="footer">¡Gracias por su preferencia!</div>

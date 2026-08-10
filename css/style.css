@@ -728,3 +728,10 @@ footer.small-print{
   color: var(--ink-soft);
   font-size: .82rem;
 }
+
+/* Métodos de pago múltiples */
+.payment-rows { display:flex; flex-direction:column; gap:10px; margin:12px 0; }
+.pago-fila { display:grid; grid-template-columns:1fr 0.8fr 1fr 1.15fr auto; gap:10px; align-items:end; padding:12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:rgba(255,255,255,.02); }
+.payment-summary { margin-top:10px; padding:10px 12px; border-radius:var(--radius-sm); background:rgba(255,255,255,.04); }
+.pago-quitar { min-width:40px; }
+@media (max-width: 800px) { .pago-fila { grid-template-columns:1fr 1fr; } .pago-fila .pago-quitar { grid-column:auto; } }
