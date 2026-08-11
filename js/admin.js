@@ -580,9 +580,10 @@ async function confirmarPagoDesdeAdmin(id) {
     : (registroActual.pago?.metodo && registroActual.pago.metodo !== 'pendiente' ? [{ metodo: registroActual.pago.metodo, moneda: registroActual.pago.moneda, monto: registroActual.pago.monto, montoBs: registroActual.pago.montoBs, montoUsd: registroActual.pago.montoUsd, referencia: registroActual.pago.referencia }] : []);
   const pagos = [...pagosPrevios, nuevoPago];
   const costoTotal = awCostoTotalRegistro(registroActual);
-  const totalUsd = pagos.reduce((a,p) => a + (typeof p.montoUsd === 'number' ? p.montoUsd : awConvertir(p.monto,p.moneda,awTasaCache).usd), 0);
-  const totalBs = pagos.reduce((a,p) => a + (typeof p.montoBs === 'number' ? p.montoBs : awConvertir(p.monto,p.moneda,awTasaCache).bs), 0);
-  const nuevoEstado = totalUsd >= (costoTotal.usd - 0.01) ? 'PAGADO' : 'PENDIENTE';
+  const coberturaPago = awPagosCubrenTotal(pagos, costoTotal, awTasaCache);
+  const totalUsd = coberturaPago.pagadoUsd;
+  const totalBs = coberturaPago.pagadoBs;
+  const nuevoEstado = coberturaPago.pagado ? 'PAGADO' : 'PENDIENTE';
   const pago = { metodo: pagos[0]?.metodo || metodo, moneda: pagos[0]?.moneda || moneda, monto: pagos[0]?.monto || monto, montoBs: totalBs, montoUsd: totalUsd, referencia: pagos.map(p=>p.referencia).filter(Boolean).join(' | '), metodos: pagos, tasaUsada: awTasaCache };
   const ok = await awUpdateRegistro(id, { estado: nuevoEstado, pago });
   showToast(ok ? (nuevoEstado === 'PAGADO' ? 'Pago completado' : 'Abono registrado — todavía queda pendiente') : 'No se pudo actualizar');

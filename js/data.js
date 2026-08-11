@@ -87,6 +87,48 @@ function awConvertir(monto, monedaOrigen, tasa) {
   return { bs: m, usd: tasa > 0 ? m / tasa : 0 };
 }
 
+/* Determina si uno o varios pagos cubren el total.
+   Se aceptan pagos exactos en Bs, exactos en USD o una combinación de ambos.
+   Se usan los montos convertidos guardados en cada pago para no depender de
+   redondeos posteriores ni de la zona horaria/estado del navegador. */
+function awPagosCubrenTotal(pagos, costoTotal, tasa) {
+  const lista = Array.isArray(pagos) ? pagos : [];
+  const tot = lista.reduce((acc, p) => {
+    let bs = Number(p.montoBs);
+    let usd = Number(p.montoUsd);
+    if (!Number.isFinite(bs) || !Number.isFinite(usd)) {
+      const conv = awConvertir(p.monto, p.moneda, tasa);
+      bs = conv.bs;
+      usd = conv.usd;
+    }
+    acc.bs += bs;
+    acc.usd += usd;
+    return acc;
+  }, { bs: 0, usd: 0 });
+
+  // Tolerancia pequeña para el redondeo mostrado en pantalla.
+  const tolBs = 0.02;
+  const tolUsd = 0.01;
+
+  // Si todo se pagó en una sola moneda, el total mostrado en esa moneda
+  // debe ser suficiente. Esto evita el falso PENDIENTE por redondeos Bs/USD.
+  const cubreBs = tot.bs + tolBs >= Number(costoTotal.bs || 0);
+  const cubreUsd = tot.usd + tolUsd >= Number(costoTotal.usd || 0);
+
+  // Para pagos combinados, también comprobamos el equivalente en USD.
+  const equivalenteUsd = tot.usd + (tot.bs / (Number(tasa) || 1));
+  const cubreCombinado = equivalenteUsd + tolUsd >= Number(costoTotal.usd || 0);
+
+  return {
+    pagadoBs: tot.bs,
+    pagadoUsd: tot.usd,
+    cubreBs,
+    cubreUsd,
+    cubreCombinado,
+    pagado: cubreBs || cubreUsd || cubreCombinado
+  };
+}
+
 /* ---------- Servicios ---------- */
 async function awGetServicios(sucursalId) {
   let q = awSupabase.from('servicios').select('*').order('created_at');

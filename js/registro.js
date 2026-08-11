@@ -689,11 +689,12 @@ async function onSubmitRegistro(e) {
   const periquitosArr = leerFilasPeriquitos();
 
   const costoTotal = awCostoTotalRegistro({ servicios: serviciosFilas, bebidas: bebidasArr, periquitos: periquitosArr });
-  const pagosBs = pagos.reduce((a,p) => a + (p.montoBs || 0), 0);
-  const pagosUsd = pagos.reduce((a,p) => a + (p.montoUsd || 0), 0);
+  const coberturaPago = awPagosCubrenTotal(pagos, costoTotal, awTasaCache);
+  const pagosBs = coberturaPago.pagadoBs;
+  const pagosUsd = coberturaPago.pagadoUsd;
   const estadoFinal = pagos.length === 1 && pagos[0].metodo === 'pendiente'
     ? 'PENDIENTE'
-    : (pagosUsd >= (costoTotal.usd - 0.01) ? 'PAGADO' : 'PENDIENTE');
+    : (coberturaPago.pagado ? 'PAGADO' : 'PENDIENTE');
 
   const registro = {
     id: awUid(),
@@ -908,9 +909,10 @@ async function confirmarPago(id) {
     : (registroActual.pago?.metodo && registroActual.pago.metodo !== 'pendiente' ? [{ metodo: registroActual.pago.metodo, moneda: registroActual.pago.moneda, monto: registroActual.pago.monto, montoBs: registroActual.pago.montoBs, montoUsd: registroActual.pago.montoUsd, referencia: registroActual.pago.referencia }] : []);
   const pagos = [...pagosPrevios, nuevoPago];
   const costoTotal = awCostoTotalRegistro(registroActual);
-  const totalUsd = pagos.reduce((a,p) => a + (typeof p.montoUsd === 'number' ? p.montoUsd : awConvertir(p.monto,p.moneda,awTasaCache).usd), 0);
-  const totalBs = pagos.reduce((a,p) => a + (typeof p.montoBs === 'number' ? p.montoBs : awConvertir(p.monto,p.moneda,awTasaCache).bs), 0);
-  const nuevoEstado = totalUsd >= (costoTotal.usd - 0.01) ? 'PAGADO' : 'PENDIENTE';
+  const coberturaPago = awPagosCubrenTotal(pagos, costoTotal, awTasaCache);
+  const totalUsd = coberturaPago.pagadoUsd;
+  const totalBs = coberturaPago.pagadoBs;
+  const nuevoEstado = coberturaPago.pagado ? 'PAGADO' : 'PENDIENTE';
   const pago = { metodo: pagos[0]?.metodo || metodo, moneda: pagos[0]?.moneda || moneda, monto: pagos[0]?.monto || monto, montoBs: totalBs, montoUsd: totalUsd, referencia: pagos.map(p=>p.referencia).filter(Boolean).join(' | '), metodos: pagos, tasaUsada: awTasaCache };
   const ok = await awUpdateRegistro(id, { estado: nuevoEstado, pago });
   showToast(ok ? (nuevoEstado === 'PAGADO' ? 'Pago confirmado' : 'Abono registrado — todavía queda pendiente') : 'No se pudo actualizar. Intenta de nuevo.');
