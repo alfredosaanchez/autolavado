@@ -448,3 +448,32 @@ function awWhatsAppLink(telefono, nombre, carroModelo) {
   const mensaje = `Hola, buenas Sr(a) ${nombre}, un gusto saludarle desde Venta Falcon Auto Motor, su vehículo ${carroModelo} ya está listo para que venga a retirarlo.`;
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
 }
+
+
+/* ---------- Hora y fecha del sistema — Caracas (UTC-4) ---------- */
+function actualizarHoraFechaSistema() {
+  const el = document.getElementById('horaFechaSistema');
+  if (!el) return;
+
+  const ahora = new Date();
+  const fecha = ahora.toLocaleDateString('es-VE', {
+    timeZone: 'America/Caracas',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+  const hora = ahora.toLocaleTimeString('es-VE', {
+    timeZone: 'America/Caracas',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  el.textContent = `Hora y fecha del sistema: ${fecha} ${hora} · Caracas (UTC-4)`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  actualizarHoraFechaSistema();
+  setInterval(actualizarHoraFechaSistema, 1000);
+});

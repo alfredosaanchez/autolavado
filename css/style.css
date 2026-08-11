@@ -75,6 +75,34 @@ button, input, select, textarea{ font-family: inherit; font-size: 1rem; }
   text-decoration:none;
   color:#fff;
 }
+
+/* ---------- Hora y fecha del sistema ---------- */
+.brand-info{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:4px;
+  line-height:1.15;
+}
+.brand-name{
+  display:block;
+}
+.hora-fecha-sistema{
+  display:block;
+  color:rgba(255,255,255,0.72);
+  font-family:var(--font-mono);
+  font-size:.72rem;
+  font-weight:400;
+  letter-spacing:0;
+  white-space:nowrap;
+}
+@media (max-width: 760px){
+  .hora-fecha-sistema{
+    font-size:.64rem;
+    white-space:normal;
+  }
+}
+
 .brand .drop{
   width: 30px; height: 30px;
   display:grid; place-items:center;
