@@ -763,3 +763,17 @@ footer.small-print{
 .payment-summary { margin-top:10px; padding:10px 12px; border-radius:var(--radius-sm); background:rgba(255,255,255,.04); }
 .pago-quitar { min-width:40px; }
 @media (max-width: 800px) { .pago-fila { grid-template-columns:1fr 1fr; } .pago-fila .pago-quitar { grid-column:auto; } }
+
+/* Pastillas para los métodos de pago múltiples */
+.pago-metodo-pills {
+  margin-top: 2px;
+}
+.pago-metodo-pills label {
+  white-space: nowrap;
+}
+.pago-fila .pago-metodo-field {
+  grid-column: span 2;
+}
+@media (max-width: 800px) {
+  .pago-fila .pago-metodo-field { grid-column: 1 / -1; }
+}

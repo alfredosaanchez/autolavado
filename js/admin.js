@@ -607,6 +607,9 @@ function renderTablaRegistros(registros) {
     const comisionBs = montosPago.bs * (r.porcentajeLavador / 100);
     const comisionUsd = montosPago.usd * (r.porcentajeLavador / 100);
     const propinaTxt = r.propina.monto > 0 ? awFormatMoney(r.propina.monto, r.propina.moneda) : '—';
+    const accionWhatsApp = r.cliente?.telefono
+      ? `<a class="btn btn-whatsapp btn-sm" href="${awWhatsAppLinkSeguimiento(r)}" target="_blank" rel="noopener">📲 WhatsApp</a>`
+      : '';
     const accionPendiente = r.estado === 'PENDIENTE'
       ? `<a class="btn btn-whatsapp btn-sm" href="${awWhatsAppLinkPendiente(r)}" target="_blank" rel="noopener">💬 Recordar</a>`
       : '';
@@ -630,6 +633,7 @@ function renderTablaRegistros(registros) {
         <td>${r.observaciones ? escapeHtml(r.observaciones) : '—'}</td>
         <td>
           <div class="row-actions">
+            ${accionWhatsApp}
             ${accionPendiente}
             ${awPerfilActual && awPerfilActual.rol !== 'cajero' ? `<button class="btn btn-danger btn-sm" data-del-registro="${r.id}">Eliminar</button>` : ''}
           </div>
@@ -646,6 +650,16 @@ function renderTablaRegistros(registros) {
       );
     });
   });
+}
+
+function awWhatsAppLinkSeguimiento(r) {
+  const numero = awNormalizarTelefonoVE(r.cliente?.telefono);
+  const servicios = (r.servicios || [])
+    .map(s => s?.nombre || s?.tipo || '')
+    .filter(Boolean);
+  const servicioTexto = servicios.length ? servicios.join(' + ') : 'servicio realizado';
+  const mensaje = `Saludos cordiales tenga usted Sr(a) ${r.cliente?.nombre || ''}, le escribimos de Venta Falcon Auto Motor. Queriamos saber que tal le parecio el servicio ${servicioTexto}. y si gustaria reagendar para la semana que viene!. Quedamos atentos para anotar su cita, ¡gracias por su preferencia!`;
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
 }
 
 function awWhatsAppLinkPendiente(r) {

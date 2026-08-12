@@ -527,14 +527,18 @@ let awPagoFilaCounter = 0;
 function paymentRowHtml(id) {
   return `
     <div class="pago-fila" data-pago-id="${id}">
-      <div class="field">
-        <label>Método</label>
-        <select class="pago-metodo">
-          <option value="efectivo">Efectivo</option>
-          <option value="punto">Punto de venta</option>
-          <option value="movil">Pago móvil</option>
-          <option value="pendiente">Pendiente</option>
-        </select>
+      <div class="field pago-metodo-field">
+        <label>Método de pago</label>
+        <div class="segmented pago-metodo-pills">
+          <input type="radio" id="${id}-efectivo" name="${id}-metodo" class="pago-metodo" value="efectivo" checked>
+          <label for="${id}-efectivo">💵 Efectivo</label>
+          <input type="radio" id="${id}-punto" name="${id}-metodo" class="pago-metodo" value="punto">
+          <label for="${id}-punto">💳 Punto de venta</label>
+          <input type="radio" id="${id}-movil" name="${id}-metodo" class="pago-metodo" value="movil">
+          <label for="${id}-movil">📱 Pago móvil</label>
+          <input type="radio" id="${id}-pendiente" name="${id}-metodo" class="pago-metodo" value="pendiente">
+          <label for="${id}-pendiente">⏳ Pendiente</label>
+        </div>
       </div>
       <div class="field">
         <label>Moneda</label>
@@ -563,19 +567,20 @@ function addPagoFila() {
   div.innerHTML = paymentRowHtml(id);
   const row = div.firstElementChild;
   cont.appendChild(row);
-  const metodo = row.querySelector('.pago-metodo');
+  const metodo = row.querySelectorAll('.pago-metodo');
   const moneda = row.querySelector('.pago-moneda');
   const monto = row.querySelector('.pago-monto');
   const ref = row.querySelector('.pago-referencia');
   const quitar = row.querySelector('.pago-quitar');
 
   const refresh = () => {
-    const requiereRef = metodo.value === 'punto' || metodo.value === 'movil';
+    const metodoActual = row.querySelector('.pago-metodo:checked').value;
+    const requiereRef = metodoActual === 'punto' || metodoActual === 'movil';
     const wrap = row.querySelector('.pago-referencia-wrap');
     wrap.style.opacity = requiereRef ? '1' : '.5';
     if (requiereRef) ref.setAttribute('required', 'required');
     else ref.removeAttribute('required');
-    if (metodo.value === 'pendiente') {
+    if (metodoActual === 'pendiente') {
       monto.value = '';
       monto.disabled = true;
       moneda.disabled = true;
@@ -588,7 +593,7 @@ function addPagoFila() {
     }
     actualizarResumenPagos();
   };
-  metodo.addEventListener('change', refresh);
+  metodo.forEach(input => input.addEventListener('change', refresh));
   moneda.addEventListener('change', actualizarResumenPagos);
   monto.addEventListener('input', actualizarResumenPagos);
   ref.addEventListener('input', actualizarResumenPagos);
@@ -606,7 +611,7 @@ function addPagoFila() {
 function leerPagos() {
   const pagos = [];
   document.querySelectorAll('#pagosFilas .pago-fila').forEach(row => {
-    const metodo = row.querySelector('.pago-metodo').value;
+    const metodo = row.querySelector('.pago-metodo:checked').value;
     const moneda = row.querySelector('.pago-moneda').value;
     const monto = parseFloat(row.querySelector('.pago-monto').value) || 0;
     const referencia = row.querySelector('.pago-referencia').value.trim();
