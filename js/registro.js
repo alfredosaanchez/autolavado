@@ -530,7 +530,7 @@ function paymentRowHtml(id) {
       <div class="field pago-metodo-field">
         <label>Método de pago</label>
         <div class="segmented pago-metodo-pills">
-          <input type="radio" id="${id}-efectivo" name="${id}-metodo" class="pago-metodo" value="efectivo" checked>
+          <input type="radio" id="${id}-efectivo" name="${id}-metodo" class="pago-metodo" value="efectivo">
           <label for="${id}-efectivo">💵 Efectivo</label>
           <input type="radio" id="${id}-punto" name="${id}-metodo" class="pago-metodo" value="punto">
           <label for="${id}-punto">💳 Punto de venta</label>
@@ -574,13 +574,18 @@ function addPagoFila() {
   const quitar = row.querySelector('.pago-quitar');
 
   const refresh = () => {
-    const metodoActual = row.querySelector('.pago-metodo:checked').value;
+    const metodoSeleccionado = row.querySelector('.pago-metodo:checked');
+    const metodoActual = metodoSeleccionado ? metodoSeleccionado.value : '';
     const requiereRef = metodoActual === 'punto' || metodoActual === 'movil';
     const wrap = row.querySelector('.pago-referencia-wrap');
     wrap.style.opacity = requiereRef ? '1' : '.5';
     if (requiereRef) ref.setAttribute('required', 'required');
     else ref.removeAttribute('required');
-    if (metodoActual === 'pendiente') {
+    if (!metodoActual) {
+      monto.disabled = false;
+      moneda.disabled = false;
+      ref.disabled = false;
+    } else if (metodoActual === 'pendiente') {
       monto.value = '';
       monto.disabled = true;
       moneda.disabled = true;
@@ -611,13 +616,25 @@ function addPagoFila() {
 function leerPagos() {
   const pagos = [];
   document.querySelectorAll('#pagosFilas .pago-fila').forEach(row => {
-    const metodo = row.querySelector('.pago-metodo:checked').value;
+    const seleccionado = row.querySelector('.pago-metodo:checked');
+    if (!seleccionado) return;
+    const metodo = seleccionado.value;
     const moneda = row.querySelector('.pago-moneda').value;
     const monto = parseFloat(row.querySelector('.pago-monto').value) || 0;
     const referencia = row.querySelector('.pago-referencia').value.trim();
     pagos.push({ metodo, moneda, monto, referencia, ...awConvertir(monto, moneda, awTasaCache) });
   });
   return pagos;
+}
+
+function hayFilaPagoSinMetodo() {
+  return Array.from(document.querySelectorAll('#pagosFilas .pago-fila')).some(row => {
+    const seleccionado = row.querySelector('.pago-metodo:checked');
+    if (seleccionado) return false;
+    const montoTexto = row.querySelector('.pago-monto')?.value?.trim() || '';
+    const referencia = row.querySelector('.pago-referencia')?.value?.trim() || '';
+    return montoTexto !== '' || referencia !== '';
+  });
 }
 
 function actualizarResumenPagos() {
@@ -643,9 +660,16 @@ async function onSubmitRegistro(e) {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Guardando…';
 
+  if (hayFilaPagoSinMetodo()) {
+    showToast('Selecciona un método de pago para cada monto ingresado');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Registrar lavado';
+    return;
+  }
+
   const pagos = leerPagos();
   if (!pagos.length) {
-    showToast('Agrega al menos un método de pago');
+    showToast('Selecciona al menos un método de pago');
     submitBtn.disabled = false;
     submitBtn.textContent = 'Registrar lavado';
     return;

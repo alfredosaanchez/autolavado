@@ -658,7 +658,7 @@ function awWhatsAppLinkSeguimiento(r) {
     .map(s => s?.nombre || s?.tipo || '')
     .filter(Boolean);
   const servicioTexto = servicios.length ? servicios.join(' + ') : 'servicio realizado';
-  const mensaje = `Saludos cordiales tenga usted Sr(a) ${r.cliente?.nombre || ''}, le escribimos de Venta Falcon Auto Motor. Queriamos saber que tal le parecio el servicio. y si gustaria reagendar para la semana que viene!. Quedamos atentos para anotar su cita, ¡gracias por su preferencia!`;
+  const mensaje = `Saludos cordiales tenga usted Sr(a) ${r.cliente?.nombre || ''}, le escribimos de Venta Falcon Auto Motor. Queriamos saber que tal le parecio el servicio ${servicioTexto}. y si gustaria reagendar para la semana que viene!. Quedamos atentos para anotar su cita, ¡gracias por su preferencia!`;
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
 }
 
