@@ -954,6 +954,15 @@ async function onCargaMasivaInventario(e) {
   const resultadoEl = document.getElementById('cargaMasivaResultado');
   resultadoEl.textContent = 'Leyendo archivo…';
 
+  // La carga masiva siempre debe pertenecer a una sucursal concreta.
+  // Nunca se importa/actualiza inventario cuando el filtro está en "Todas".
+  if (awSucursalActivaAdmin === 'todas') {
+    resultadoEl.textContent = 'Selecciona una sucursal específica antes de hacer una carga masiva.';
+    showToast('Selecciona una sucursal específica para cargar inventario');
+    e.target.value = '';
+    return;
+  }
+
   try {
     const filas = await leerArchivoInventario(file);
     if (filas.length === 0) {
@@ -964,34 +973,77 @@ async function onCargaMasivaInventario(e) {
 
     let actualizados = 0;
     let creados = 0;
+
+    // Trabajamos exclusivamente con los artículos de la sucursal activa.
+    // El mismo código puede existir en otra sucursal y NO debe tocarse.
+    const inventarioSucursal = awInventarioCache.filter(
+      i => i.sucursalId === awSucursalActivaAdmin
+    );
+
+    // Evita problemas si el archivo contiene el mismo código más de una vez.
+    const existentesPorCodigo = new Map(
+      inventarioSucursal.map(i => [String(i.codigo || '').trim().toLowerCase(), i])
+    );
+
     for (const fila of filas) {
-      const existente = awInventarioCache.find(i => (i.codigo || '').trim().toLowerCase() === fila.codigo.trim().toLowerCase());
+      const codigo = String(fila.codigo || '').trim();
+      const clave = codigo.toLowerCase();
+      if (!clave) continue;
+
+      const existente = existentesPorCodigo.get(clave);
+
       if (existente) {
+        const cantidadNueva = (Number(existente.cantidad) || 0) + (Number(fila.cantidad) || 0);
         await awUpdateInventarioDb(existente.id, {
-          codigo: existente.codigo,
+          codigo: existente.codigo || codigo,
           descripcion: fila.descripcion || existente.descripcion,
-          cantidad: existente.cantidad + fila.cantidad,
-          precioCompraUsd: fila.precioCompra,
-          precioVentaUsd: fila.precioVenta,
-          precioCompraBs: fila.precioCompra * awTasaCache,
-          precioVentaBs: fila.precioVenta * awTasaCache
+          cantidad: cantidadNueva,
+          precioCompraUsd: Number(fila.precioCompra) || 0,
+          precioVentaUsd: Number(fila.precioVenta) || 0,
+          precioCompraBs: (Number(fila.precioCompra) || 0) * awTasaCache,
+          precioVentaBs: (Number(fila.precioVenta) || 0) * awTasaCache
         });
+
+        // Mantiene la caché coherente para filas repetidas del mismo archivo.
+        existente.cantidad = cantidadNueva;
+        existente.descripcion = fila.descripcion || existente.descripcion;
+        existente.precioCompraUsd = Number(fila.precioCompra) || 0;
+        existente.precioVentaUsd = Number(fila.precioVenta) || 0;
+        existente.precioCompraBs = (Number(fila.precioCompra) || 0) * awTasaCache;
+        existente.precioVentaBs = (Number(fila.precioVenta) || 0) * awTasaCache;
         actualizados++;
       } else {
-        await awAddInventarioDb({
-          codigo: fila.codigo, descripcion: fila.descripcion, cantidad: fila.cantidad,
-          precioCompraUsd: fila.precioCompra, precioVentaUsd: fila.precioVenta,
-          precioCompraBs: fila.precioCompra * awTasaCache, precioVentaBs: fila.precioVenta * awTasaCache
-        });
+        const nuevo = {
+          codigo,
+          descripcion: fila.descripcion || 'Artículo',
+          cantidad: Number(fila.cantidad) || 0,
+          precioCompraUsd: Number(fila.precioCompra) || 0,
+          precioVentaUsd: Number(fila.precioVenta) || 0,
+          precioCompraBs: (Number(fila.precioCompra) || 0) * awTasaCache,
+          precioVentaBs: (Number(fila.precioVenta) || 0) * awTasaCache,
+          sucursalId: awSucursalActivaAdmin
+        };
+
+        await awAddInventarioDb(nuevo);
         creados++;
+
+        // Lo agregamos al mapa local para que otra fila con el mismo código
+        // se acumule en este mismo artículo y no cree un duplicado.
+        existentesPorCodigo.set(clave, { ...nuevo, id: `bulk-${Date.now()}-${creados}` });
       }
     }
+
+    // Recarga desde Supabase para confirmar que la vista y la caché quedan
+    // alineadas con la sucursal activa.
+    const inventarioActualizado = await awGetInventario();
+    awInventarioCache = inventarioActualizado;
+
     resultadoEl.textContent = `Listo: ${creados} artículo(s) nuevo(s), ${actualizados} actualizado(s).`;
     showToast('Carga masiva completada');
     await renderAll();
   } catch (err) {
     console.error(err);
-    resultadoEl.textContent = 'No se pudo leer el archivo. Verifica que uses la plantilla (CODIGO, DESCRIPCION, CANTIDAD, PRECIO_COMPRA, PRECIO_VENTA).';
+    resultadoEl.textContent = 'No se pudo completar la carga. Verifica el archivo y la sucursal seleccionada.';
   }
   e.target.value = '';
 }
