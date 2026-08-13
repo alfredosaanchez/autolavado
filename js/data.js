@@ -519,3 +519,23 @@ document.addEventListener('DOMContentLoaded', () => {
   actualizarHoraFechaSistema();
   setInterval(actualizarHoraFechaSistema, 1000);
 });
+
+
+/* ---------- Logo dinámico por sucursal ---------- */
+function awActualizarLogoSucursal(sucursalId, sucursales = []) {
+  const logo = document.getElementById('logoSucursal');
+  if (!logo) return;
+
+  const lista = Array.isArray(sucursales) ? sucursales : [];
+  const suc = lista.find(s => s && s.id === sucursalId);
+  const nombre = String(suc?.nombre || '').toLowerCase();
+
+  // "Todas" usa el logo general de Sucursal I.
+  // Si la sucursal se llama Sucursal II (o contiene " ii"), usa el logo II.
+  const esSucursalII =
+    sucursalId !== 'todas' &&
+    (/\bii\b/.test(nombre) || /sucursal\s*2\b/.test(nombre) || /\b2\b/.test(nombre));
+
+  logo.src = esSucursalII ? 'img/logo-sucursal-II.png' : 'img/logo-sucursal-I.png';
+  logo.alt = esSucursalII ? 'Venta Falcon Auto Motor — Sucursal II' : 'Venta Falcon Auto Motor';
+}

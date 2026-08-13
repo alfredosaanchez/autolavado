@@ -188,6 +188,7 @@ async function mostrarFormularioRegistro(session, perfil) {
     if (!perfil.sucursal_id) {
       document.getElementById('sucursalFijaTxt').textContent = 'Sin asignar — avisa al Dueño';
     }
+    awActualizarLogoSucursal(awSucursalActivaId, awSucursalesCache);
   } else {
     const selSucursal = document.getElementById('sucursalSelect');
     document.getElementById('sucursalWidgetSelect').style.display = 'flex';
@@ -196,9 +197,11 @@ async function mostrarFormularioRegistro(session, perfil) {
     const existe = awSucursalesCache.some(s => s.id === guardada);
     awSucursalActivaId = existe ? guardada : (awSucursalesCache[0] ? awSucursalesCache[0].id : null);
     selSucursal.value = awSucursalActivaId || '';
+    awActualizarLogoSucursal(awSucursalActivaId, awSucursalesCache);
     selSucursal.addEventListener('change', async () => {
       awSucursalActivaId = selSucursal.value;
       localStorage.setItem('aw_sucursal_activa', awSucursalActivaId);
+      awActualizarLogoSucursal(awSucursalActivaId, awSucursalesCache);
       await cargarConfiguracion();
       await renderTickets();
     });

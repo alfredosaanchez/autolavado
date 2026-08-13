@@ -254,6 +254,7 @@ async function configurarSucursalAdmin() {
     sel.innerHTML = `<option value="${awPerfilActual.sucursal_id || ''}">${suc ? escapeHtml(suc.nombre) : 'Sin asignar'}</option>`;
     sel.disabled = true;
     awSucursalActivaAdmin = awPerfilActual.sucursal_id || 'todas';
+    awActualizarLogoSucursal(awSucursalActivaAdmin, awSucursalesCache);
     return;
   }
 
@@ -264,10 +265,12 @@ async function configurarSucursalAdmin() {
   const valida = guardada && (guardada === 'todas' || awSucursalesCache.some(s => s.id === guardada));
   awSucursalActivaAdmin = valida ? guardada : 'todas';
   sel.value = awSucursalActivaAdmin;
+  awActualizarLogoSucursal(awSucursalActivaAdmin, awSucursalesCache);
 
   sel.addEventListener('change', () => {
     awSucursalActivaAdmin = sel.value;
     localStorage.setItem('aw_sucursal_activa_admin', awSucursalActivaAdmin);
+    awActualizarLogoSucursal(awSucursalActivaAdmin, awSucursalesCache);
     renderAll();
   });
 }
