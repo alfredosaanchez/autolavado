@@ -661,7 +661,12 @@ function awWhatsAppLinkSeguimiento(r) {
     .map(s => s?.nombre || s?.tipo || '')
     .filter(Boolean);
   const servicioTexto = servicios.length ? servicios.join(' + ') : 'servicio realizado';
-  const mensaje = `Saludos cordiales tenga usted Sr(a) ${r.cliente?.nombre || ''}, le escribimos de Venta Falcon Auto Motor. Queriamos saber que tal le parecio el servicio ${servicioTexto}. y si gustaria reagendar para la semana que viene!. Quedamos atentos para anotar su cita, ¡gracias por su preferencia!`;
+  const mensaje = `Estimado cliente ¡Bendiciones!.
+
+Reciba un cordial saludo de parte de Multiservicio Venta Falcón.📲 
+
+Le contactamos para agradecerle por habernos visitado el día de ayer. Para nosotros su opinión es 💯 fundamental por lo que nos encantaría saber qué le pareció el servicio recibido y si tiene alguna sugerencia que nos ayude a mejorar.
+ Quedamos atentos a sus comentarios.🚀💯🚘😎`;
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
 }
 
